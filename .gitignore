@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Build artefacts
+mSM.app/
+mSM.love
+example-build.html
+
+# Decks privés (use cases)
+sl-uc1-*
+sl-uc2-*
+
+# Tags Release (zips produits localement)
+*.app.zip
+release/

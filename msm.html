@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mSM — .md Slide Machine</title>
+  <style>
+    :root {
+      --bg: #111318;
+      --fg: #eef2f7;
+      --accent: #ff7a59;
+      --muted: #8a93a3;
+      --h2: #7dd3fc;
+      --h3: #c4b5fd;
+      --note: #a8c0e0;
+      --font-size: 34px;
+      --title-size: 72px;
+      --code-size: 24px;
+      --padding: 80px;
+      --duration: 0.35s;
+      --align: left;
+      --font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; width: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font-family); }
+    body.theme-light { --bg: #ffffff; --fg: #1a1d21; --accent: #2563eb; --muted: #6b7280; --h2: #0891b2; --h3: #7c3aed; --note: #475569; }
+    body.theme-cream { --bg: #f4ead5; --fg: #2b2a26; --accent: #b34f2e; --muted: #7a6f56; --h2: #5e6f41; --h3: #8a5c30; --note: #8a7a5e; }
+    body.theme-slate { --bg: #1e293b; --fg: #f1f5f9; --accent: #38bdf8; --muted: #94a3b8; --h2: #a78bfa; --h3: #f472b6; --note: #cbd5e1; }
+    body.theme-solar { --bg: #fdf6e3; --fg: #073642; --accent: #b58900; --muted: #657b83; --h2: #268bd2; --h3: #d33682; --note: #586e75; }
+
+    .deck { position: relative; width: 100vw; height: 100vh; }
+
+    .slide {
+      position: absolute; inset: 0;
+      padding: var(--padding);
+      display: flex; flex-direction: column; justify-content: center;
+      overflow: hidden;
+      text-align: var(--align);
+      transition: transform var(--duration) ease, opacity var(--duration) ease;
+      opacity: 0; pointer-events: none;
+      transform: translateX(100%);
+    }
+    .slide .content { width: 100%; transform-origin: top center; }
+
+    /* fade */
+    body.t-fade .slide { transform: none; }
+    body.t-fade .slide.current { opacity: 1; pointer-events: auto; }
+
+    /* slide */
+    body.t-slide .slide { opacity: 1; transform: translateX(100%); }
+    body.t-slide .slide.past { transform: translateX(-100%); }
+    body.t-slide .slide.current { transform: translateX(0); pointer-events: auto; }
+
+    /* push */
+    body.t-push .slide { transform: translateX(100%); opacity: 0; }
+    body.t-push .slide.past { transform: translateX(-30%); opacity: 0.25; }
+    body.t-push .slide.current { transform: translateX(0); opacity: 1; pointer-events: auto; }
+
+    /* none */
+    body.t-none .slide { transition: none; transform: none; }
+    body.t-none .slide.current { opacity: 1; pointer-events: auto; }
+
+    /* instant = suppress animation for non-adjacent slides when jumping */
+    .slide.instant { transition: none !important; }
+
+    h1, h2, h3 { font-weight: 700; line-height: 1.1; margin-bottom: 0.25em; }
+    h1 { font-size: var(--title-size); color: var(--accent); }
+    h2 { font-size: calc(var(--title-size) * 0.68); color: var(--h2); }
+    h3 { font-size: calc(var(--title-size) * 0.48); color: var(--h3); }
+    p { font-size: var(--font-size); line-height: 1.35; margin-bottom: 0.35em; }
+    p.note { color: var(--note); }
+    ul { list-style: none; padding-left: 0; margin-bottom: 0.35em; }
+    ul li { font-size: var(--font-size); line-height: 1.35; margin-bottom: 0.2em; position: relative; padding-left: 1.2em; text-align: left; }
+    ul li::before { content: "•"; color: var(--accent); position: absolute; left: 0; }
+    blockquote {
+      border-left: 4px solid var(--accent);
+      padding: 0.1em 1em; color: var(--muted);
+      font-size: var(--font-size); font-style: italic;
+      margin-bottom: 0.4em; text-align: left;
+    }
+    pre {
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      padding: 1em; border-radius: 10px;
+      font-size: var(--code-size);
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      white-space: pre-wrap; word-break: break-word;
+      margin-bottom: 0.4em; text-align: left;
+    }
+    img { max-width: 100%; max-height: 70vh; display: block; margin: 0.4em auto; object-fit: contain; }
+    strong { font-weight: 700; }
+    em { font-style: italic; }
+    s { opacity: 0.65; }
+    a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+    code {
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      color: var(--accent);
+      padding: 0.05em 0.35em;
+      border-radius: 4px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.88em;
+    }
+    pre code { background: transparent; color: inherit; padding: 0; font-size: inherit; border-radius: 0; }
+    table { border-collapse: collapse; margin: 0.5em auto; font-size: var(--font-size); }
+    table th, table td { padding: 0.5em 0.9em; }
+    table th {
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      color: var(--accent); font-weight: 600;
+      border-bottom: 1px solid color-mix(in srgb, var(--muted) 45%, transparent);
+    }
+    table tbody tr + tr td {
+      border-top: 1px solid color-mix(in srgb, var(--muted) 18%, transparent);
+    }
+    .spacer { height: 0.4em; }
+
+    .index {
+      position: fixed; bottom: 14px; right: 22px;
+      color: var(--muted); opacity: 0.65;
+      font-size: 14px; font-family: ui-monospace, monospace;
+      pointer-events: none; user-select: none;
+      z-index: 50;
+    }
+
+    .welcome {
+      position: fixed; inset: 0;
+      display: grid; place-items: center; padding: 2em;
+      text-align: center; z-index: 100;
+      background: var(--bg);
+    }
+    .welcome.hidden { display: none; }
+    .welcome h1 { font-size: 56px; margin-bottom: 0.3em; }
+    .welcome p { margin: 0.6em 0; color: var(--muted); max-width: 620px; }
+    .welcome code { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); padding: 0.1em 0.35em; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 0.85em; }
+    .welcome .drop {
+      margin-top: 1.2em; padding: 2em;
+      border: 2px dashed color-mix(in srgb, var(--muted) 50%, transparent);
+      border-radius: 12px; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .welcome .drop:hover, .welcome .drop.dragover {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 6%, transparent);
+    }
+    .welcome input[type=file] { display: none; }
+    .welcome .err { color: #ef4444; }
+  </style>
+</head>
+<body class="theme-dark t-fade">
+  <script type="text/plain" id="deck-embed">__MSM_EMBED_PLACEHOLDER_53a8b__</script>
+  <div class="deck" id="deck"></div>
+  <div class="index" id="idx"></div>
+  <div class="welcome" id="welcome">
+    <div>
+      <h1>mSM</h1>
+      <p>.md Slide Machine — player web</p>
+      <p>Passez <code>?deck=mon-deck.md</code> dans l'URL, ou déposez un fichier ici :</p>
+      <label class="drop" id="drop">
+        Cliquer ou glisser un fichier <code>.md</code>
+        <input type="file" id="picker" accept=".md,.markdown,text/markdown,text/plain" />
+      </label>
+      <p id="err" class="err"></p>
+    </div>
+  </div>
+
+  <script>
+  // ---------- parser ----------
+  function parseFrontmatter(text) {
+    const meta = {};
+    const m = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+    if (!m) return { meta, body: text };
+    for (const line of m[1].split("\n")) {
+      const kv = line.match(/^\s*([\w_-]+)\s*:\s*(.*?)\s*$/);
+      if (kv) meta[kv[1]] = kv[2];
+    }
+    return { meta, body: m[2] };
+  }
+
+  function splitSlides(body) {
+    const slides = [[]];
+    for (const line of body.split("\n")) {
+      if (/^-{3,}\s*$/.test(line) || /^={3,}\s*$/.test(line)) slides.push([]);
+      else slides[slides.length - 1].push(line);
+    }
+    return slides;
+  }
+
+  const isPipe = (l) => /^\s*\|/.test(l);
+  const isTableSep = (l) => isPipe(l) && /^[\s|:\-]+$/.test(l);
+  function parsePipeRow(line) {
+    return line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map(s => s.trim());
+  }
+  function parseAlign(cells) {
+    return cells.map(c => {
+      const left = c.startsWith(":"), right = c.endsWith(":");
+      return (left && right) ? "center" : right ? "right" : "left";
+    });
+  }
+
+  function parseSlide(lines) {
+    const els = [];
+    let inCode = false, codeBuf = null, tableBuf = null;
+    const flushTable = () => {
+      if (!tableBuf || !tableBuf.length) return;
+      const header = parsePipeRow(tableBuf[0]);
+      let aligns = [], start = 1;
+      if (tableBuf[1] && isTableSep(tableBuf[1])) {
+        aligns = parseAlign(parsePipeRow(tableBuf[1]));
+        start = 2;
+      }
+      const rows = tableBuf.slice(start).map(parsePipeRow);
+      els.push({ type: "table", header, aligns, rows });
+      tableBuf = null;
+    };
+    for (const line of lines) {
+      if (/^```/.test(line)) {
+        flushTable();
+        if (inCode) { els.push({ type: "code", text: codeBuf.join("\n") }); codeBuf = null; inCode = false; }
+        else { codeBuf = []; inCode = true; }
+      } else if (inCode) { codeBuf.push(line); }
+      else if (isPipe(line)) { (tableBuf = tableBuf || []).push(line); }
+      else {
+        flushTable();
+        let m;
+        if ((m = line.match(/^#\s+(.+)$/))) els.push({ type: "h1", text: m[1] });
+        else if ((m = line.match(/^##\s+(.+)$/))) els.push({ type: "h2", text: m[1] });
+        else if ((m = line.match(/^###\s+(.+)$/))) els.push({ type: "h3", text: m[1] });
+        else if ((m = line.match(/^!\[(.*?)\]\((.*?)\)\s*$/))) els.push({ type: "image", alt: m[1], src: m[2] });
+        else if ((m = line.match(/^(\s*)-\s*>\s*(.+)$/))) els.push({ type: "note", text: m[2], level: Math.floor(m[1].length / 2) });
+        else if ((m = line.match(/^[-*]\s+(.+)$/))) els.push({ type: "bullet", text: m[1] });
+        else if ((m = line.match(/^>\s*(.*)$/))) els.push({ type: "quote", text: m[1] });
+        else if (line.trim() === "") els.push({ type: "space" });
+        else els.push({ type: "text", text: line });
+      }
+    }
+    flushTable();
+    while (els[0] && els[0].type === "space") els.shift();
+    while (els.length && els[els.length - 1].type === "space") els.pop();
+    return els;
+  }
+
+  function parse(text) {
+    text = text.replace(/\r\n/g, "\n");
+    const { meta, body } = parseFrontmatter(text);
+    const raw = splitSlides(body);
+    const slides = raw.map(parseSlide).filter(s => s.length);
+    return { meta, slides };
+  }
+
+  // inline markdown: **gras**, *italique*, `code`, ~~barré~~, [texte](url)
+  function escapeHTML(s) {
+    return s.replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[c]);
+  }
+  function inlineMD(s) {
+    if (!s) return "";
+    // on extrait d'abord les backticks pour protéger leur contenu
+    const codeSlots = [];
+    s = s.replace(/`([^`]+)`/g, (_, c) => {
+      codeSlots.push(escapeHTML(c));
+      return `\u0000${codeSlots.length - 1}\u0000`;
+    });
+    s = escapeHTML(s);
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    s = s.replace(/~~([^~]+)~~/g, "<s>$1</s>");
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, t, u) =>
+      `<a href="${u.replace(/"/g, "&quot;")}" target="_blank" rel="noopener">${t}</a>`);
+    s = s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codeSlots[+i]}</code>`);
+    return s;
+  }
+  function stripInline(s) {
+    return (s || "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/~~([^~]+)~~/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  }
+
+  // ---------- renderer ----------
+  const THEMES = new Set(["dark", "light", "cream", "slate", "solar"]);
+  const TRANS = new Set(["fade", "slide", "push", "none"]);
+
+  let deckBase = "";
+  let slidesCount = 0;
+  let current = 0;
+  let overflowMode = "shrink";
+  let minScale = 0.45;
+
+  function resolveSrc(src) {
+    if (/^(https?:|data:|blob:|\/)/i.test(src)) return src;
+    return deckBase + src;
+  }
+
+  function applyMeta(meta) {
+    const body = document.body;
+    body.className = "";
+    body.classList.add("theme-" + (THEMES.has(meta.theme) ? meta.theme : "dark"));
+    body.classList.add("t-" + (TRANS.has(meta.transition) ? meta.transition : "fade"));
+    const root = document.documentElement.style;
+    const set = (k, v, unit = "") => v != null && v !== "" && root.setProperty(k, v + unit);
+    set("--bg", meta.background);
+    set("--fg", meta.color);
+    set("--accent", meta.accent);
+    set("--muted", meta.muted);
+    set("--h2", meta.h2);
+    set("--h3", meta.h3);
+    set("--note", meta.note);
+    set("--font-size", meta.fontSize, "px");
+    set("--title-size", meta.titleSize, "px");
+    set("--code-size", meta.codeSize, "px");
+    set("--padding", meta.padding, "px");
+    set("--duration", meta.transitionDuration, "s");
+    set("--align", meta.align);
+    if (meta.font) root.setProperty("--font-family", `"${meta.font}", system-ui, sans-serif`);
+    overflowMode = meta.overflow || "shrink";
+    minScale = parseFloat(meta.minScale) || 0.45;
+  }
+
+  function renderSlide(slide) {
+    const sec = document.createElement("section");
+    sec.className = "slide";
+    const content = document.createElement("div");
+    content.className = "content";
+    let curList = null;
+    const closeList = () => { if (curList) { content.appendChild(curList); curList = null; } };
+
+    for (const el of slide) {
+      if (el.type !== "bullet") closeList();
+      switch (el.type) {
+        case "h1": case "h2": case "h3": {
+          const h = document.createElement(el.type);
+          h.innerHTML = inlineMD(el.text); content.appendChild(h); break;
+        }
+        case "bullet": {
+          if (!curList) curList = document.createElement("ul");
+          const li = document.createElement("li"); li.innerHTML = inlineMD(el.text); curList.appendChild(li); break;
+        }
+        case "quote": {
+          const q = document.createElement("blockquote");
+          q.innerHTML = inlineMD(el.text); content.appendChild(q); break;
+        }
+        case "note": {
+          const p = document.createElement("p");
+          p.className = "note";
+          if (el.level && el.level > 0) p.style.marginLeft = (el.level * 1.4) + "em";
+          p.innerHTML = inlineMD(el.text); content.appendChild(p); break;
+        }
+        case "code": {
+          const pre = document.createElement("pre");
+          pre.textContent = el.text; content.appendChild(pre); break;
+        }
+        case "image": {
+          const img = document.createElement("img");
+          img.src = resolveSrc(el.src); img.alt = el.alt || "";
+          img.addEventListener("load", () => applyOverflow(sec));
+          content.appendChild(img); break;
+        }
+        case "table": {
+          const t = document.createElement("table");
+          const thead = document.createElement("thead");
+          const trh = document.createElement("tr");
+          el.header.forEach((c, i) => {
+            const th = document.createElement("th");
+            th.innerHTML = inlineMD(c);
+            th.style.textAlign = el.aligns[i] || "left";
+            trh.appendChild(th);
+          });
+          thead.appendChild(trh); t.appendChild(thead);
+          const tbody = document.createElement("tbody");
+          for (const row of el.rows) {
+            const tr = document.createElement("tr");
+            for (let i = 0; i < el.header.length; i++) {
+              const td = document.createElement("td");
+              td.innerHTML = inlineMD(row[i] || "");
+              td.style.textAlign = el.aligns[i] || "left";
+              tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+          }
+          t.appendChild(tbody); content.appendChild(t); break;
+        }
+        case "space": {
+          const s = document.createElement("div"); s.className = "spacer"; content.appendChild(s); break;
+        }
+        default: {
+          const p = document.createElement("p"); p.innerHTML = inlineMD(el.text); content.appendChild(p);
+        }
+      }
+    }
+    closeList();
+    sec.appendChild(content);
+    return sec;
+  }
+
+  function renderDeck(slides) {
+    const deck = document.getElementById("deck");
+    deck.innerHTML = "";
+    slides.forEach(s => deck.appendChild(renderSlide(s)));
+    slidesCount = slides.length;
+  }
+
+  function applyOverflow(slideEl) {
+    const content = slideEl.querySelector(".content");
+    if (!content) return;
+    content.style.transform = "";
+    slideEl.style.justifyContent = "center";
+    const style = getComputedStyle(slideEl);
+    const pt = parseFloat(style.paddingTop) || 0;
+    const pb = parseFloat(style.paddingBottom) || 0;
+    const maxH = slideEl.clientHeight - pt - pb;
+    const h = content.scrollHeight;
+    if (h <= maxH + 0.5) return;
+    if (overflowMode === "clip") return;
+    const scale = Math.max(minScale, maxH / h);
+    content.style.transform = `scale(${scale})`;
+    slideEl.style.justifyContent = "flex-start";
+  }
+
+  function go(n) {
+    if (!slidesCount) return;
+    n = Math.max(0, Math.min(slidesCount - 1, n));
+    const old = current;
+    current = n;
+    const sects = document.querySelectorAll(".slide");
+    sects.forEach((s, i) => {
+      s.classList.remove("current", "past", "instant");
+      if (i !== n && i !== old) s.classList.add("instant");
+      if (i === n) s.classList.add("current");
+      else if (i < n) s.classList.add("past");
+    });
+    document.getElementById("idx").textContent = (n + 1) + " / " + slidesCount;
+    requestAnimationFrame(() => applyOverflow(sects[n]));
+  }
+
+  // ---------- loading ----------
+  function showWelcome(err) {
+    document.getElementById("welcome").classList.remove("hidden");
+    document.getElementById("err").textContent = err || "";
+  }
+  function hideWelcome() {
+    document.getElementById("welcome").classList.add("hidden");
+  }
+
+  function loadText(text, name) {
+    try {
+      const { meta, slides } = parse(text);
+      if (!slides.length) { showWelcome("Le fichier ne contient aucune slide."); return; }
+      applyMeta(meta);
+      renderDeck(slides);
+      current = 0;
+      document.title = "mSM — " + (name || "deck");
+      hideWelcome();
+      // reset positioning classes then set current
+      document.querySelectorAll(".slide").forEach((s, i) => {
+        s.classList.remove("current", "past", "instant");
+        if (i === 0) s.classList.add("current");
+      });
+      document.getElementById("idx").textContent = "1 / " + slidesCount;
+      requestAnimationFrame(() => applyOverflow(document.querySelector(".slide.current")));
+    } catch (e) {
+      showWelcome("Erreur de parsing : " + e.message);
+    }
+  }
+
+  async function loadFromURL(url) {
+    try {
+      const res = await fetch(url, { cache: "no-cache" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      deckBase = url.substring(0, url.lastIndexOf("/") + 1);
+      const name = url.split("/").pop();
+      loadText(text, name);
+    } catch (e) {
+      showWelcome("Impossible de charger « " + url + " » : " + e.message +
+        ". Ouvrez via un serveur HTTP (ex. `python3 -m http.server`) — le protocole file:// bloque fetch().");
+    }
+  }
+
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      deckBase = ""; // images in dropped decks resolve relative to current page
+      loadText(reader.result, file.name);
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- input ----------
+  window.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case "ArrowRight": case "PageDown": case " ": case "Enter": case "ArrowDown":
+        go(current + 1); e.preventDefault(); break;
+      case "ArrowLeft": case "PageUp": case "Backspace": case "ArrowUp":
+        go(current - 1); e.preventDefault(); break;
+      case "Home": go(0); e.preventDefault(); break;
+      case "End": go(slidesCount - 1); e.preventDefault(); break;
+      case "f": case "F":
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+        else document.exitFullscreen();
+        e.preventDefault(); break;
+      case "r": case "R": {
+        const params = new URLSearchParams(location.search);
+        const deck = params.get("deck");
+        if (deck) loadFromURL(deck);
+        e.preventDefault(); break;
+      }
+    }
+  });
+
+  window.addEventListener("click", (e) => {
+    if (e.target.closest(".welcome, a, input, button, label")) return;
+    go(current + 1);
+  });
+  window.addEventListener("contextmenu", (e) => {
+    if (e.target.closest(".welcome")) return;
+    e.preventDefault(); go(current - 1);
+  });
+  let wheelLock = 0;
+  window.addEventListener("wheel", (e) => {
+    const now = Date.now();
+    if (now - wheelLock < 350) return;
+    wheelLock = now;
+    if (e.deltaY > 10) go(current + 1);
+    else if (e.deltaY < -10) go(current - 1);
+  }, { passive: true });
+
+  window.addEventListener("resize", () => {
+    const active = document.querySelector(".slide.current");
+    if (active) applyOverflow(active);
+  });
+
+  // drag & drop
+  const drop = document.getElementById("drop");
+  const picker = document.getElementById("picker");
+  ["dragover", "dragenter"].forEach(ev => {
+    window.addEventListener(ev, (e) => { e.preventDefault(); if (drop) drop.classList.add("dragover"); });
+  });
+  ["dragleave", "dragend"].forEach(ev => {
+    window.addEventListener(ev, () => { if (drop) drop.classList.remove("dragover"); });
+  });
+  window.addEventListener("drop", (e) => {
+    e.preventDefault(); if (drop) drop.classList.remove("dragover");
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) loadFile(f);
+  });
+  picker && picker.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) loadFile(f);
+  });
+
+  // ---------- init ----------
+  const params = new URLSearchParams(location.search);
+  const deckParam = params.get("deck");
+  const embedEl = document.getElementById("deck-embed");
+  const embedRaw = embedEl ? embedEl.textContent : "";
+  const PLACEHOLDER = "__MSM_EMBED_PLACEHOLDER_53a8b__";
+  const embedded = (embedRaw && embedRaw.trim() !== PLACEHOLDER) ? embedRaw : "";
+
+  if (embedded) {
+    deckBase = "";
+    const nameMeta = embedEl.getAttribute("data-name") || "deck";
+    loadText(embedded, nameMeta);
+  } else if (deckParam) {
+    loadFromURL(deckParam);
+  } else {
+    showWelcome();
+  }
+  </script>
+</body>
+</html>
