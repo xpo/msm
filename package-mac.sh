@@ -24,8 +24,13 @@ echo "▸ 2/6 copie du bundle love.app..."
 rm -rf "$APP_NAME.app"
 cp -R "$LOVE_APP" "$APP_NAME.app"
 
-echo "▸ 3/6 fusion binaire + .love..."
-cat "$LOVE_APP/Contents/MacOS/love" "$APP_NAME.love" > "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+echo "▸ 3/6 binaire vierge + .love en Resources..."
+# La fusion classique (cat love + .love) corrompt le binaire dès qu'on re-signe
+# en hardened runtime : codesign réécrit LINKEDIT et écrase le .love appended.
+# Solution : binaire LÖVE inchangé + .love placé en Resources/, où LÖVE le
+# trouve automatiquement au démarrage via findGameInResources.
+cp "$LOVE_APP/Contents/MacOS/love" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+cp "$APP_NAME.love" "$APP_NAME.app/Contents/Resources/$APP_NAME.love"
 chmod +x "$APP_NAME.app/Contents/MacOS/$APP_NAME"
 rm "$APP_NAME.app/Contents/MacOS/love"
 
