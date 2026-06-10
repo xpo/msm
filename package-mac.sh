@@ -89,8 +89,36 @@ PB="/usr/libexec/PlistBuddy"
 "$PB" -c "Add :CFBundleDocumentTypes:0:CFBundleTypeExtensions:0 string md"          "$PLIST"
 "$PB" -c "Add :CFBundleDocumentTypes:0:CFBundleTypeExtensions:1 string markdown"    "$PLIST"
 
-echo "▸ 5/6 signature ad-hoc (contourne Gatekeeper)..."
-codesign --force --deep --sign - "$APP_NAME.app" >/dev/null 2>&1 || true
+echo "▸ 5/6 signature..."
+# Détecte un certificat Developer ID Application (Louis Montagne). Sinon ad-hoc.
+SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+  | awk -F\" '/Developer ID Application/ {print $2; exit}')"
+if [ -n "$SIGN_IDENTITY" ]; then
+  echo "   → identité : $SIGN_IDENTITY"
+  # Le binaire fusionné (love + .love) hérite d'une signature linker ad-hoc
+  # qui bloque la re-signature stricte. On la supprime d'abord.
+  codesign --remove-signature "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
+  # Signe frameworks/dylibs/bundles intégrés
+  find "$APP_NAME.app/Contents/Frameworks" \
+    \( -name "*.dylib" -o -name "*.framework" -o -name "*.bundle" \) 2>/dev/null \
+    | while read -r item; do
+        codesign --force --options runtime --timestamp \
+          --sign "$SIGN_IDENTITY" "$item" >/dev/null 2>&1
+      done
+  # Signe le binaire principal (post-fusion)
+  codesign --force --options runtime --timestamp \
+    --sign "$SIGN_IDENTITY" "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1
+  # Puis le bundle entier
+  codesign --force --options runtime --timestamp --deep \
+    --sign "$SIGN_IDENTITY" "$APP_NAME.app" >/dev/null 2>&1 || {
+      echo "   ⚠ signature développeur échouée, fallback ad-hoc"
+      codesign --force --deep --sign - "$APP_NAME.app" >/dev/null 2>&1 || true
+    }
+  codesign --verify --deep --strict --verbose=2 "$APP_NAME.app" 2>&1 | tail -3 || true
+else
+  echo "   → ad-hoc (aucun Developer ID trouvé)"
+  codesign --force --deep --sign - "$APP_NAME.app" >/dev/null 2>&1 || true
+fi
 
 echo "▸ 6/6 nettoyage des attributs quarantine..."
 find "$APP_NAME.app" -exec xattr -d com.apple.quarantine {} \; 2>/dev/null || true
