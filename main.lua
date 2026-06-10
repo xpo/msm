@@ -41,6 +41,19 @@ local edit_dragging = false
 local edit_last_click_t = 0
 local edit_last_click_pos = 0
 local edit_click_count = 0
+-- undo / redo
+local undo_stack = {}
+local redo_stack = {}
+local last_action = ""        -- "type", "delete", "other", "undo", "redo"
+local last_action_t = 0
+local UNDO_CAP = 200
+local TYPE_COALESCE = 1.0     -- secondes : groupe les frappes consécutives
+
+local function trim_blank_lines(s)
+  s = (s or ""):gsub("^[\r\n]+", "")
+  s = s:gsub("[\r\n]+$", "")
+  return s
+end
 
 local function file_mtime(path)
   if not path then return nil end
@@ -516,11 +529,16 @@ local function enter_edit_mode()
   if not deck_path or #slides == 0 then flash("Rien à éditer"); return end
   if not raw_slides_src[current] then flash("Slide introuvable"); return end
   edit_mode = true
-  edit_text = raw_slides_src[current]
+  edit_text = trim_blank_lines(raw_slides_src[current])
   edit_cursor = #edit_text + 1
   edit_anchor = edit_cursor
   edit_dragging = false
   edit_caret_seed = love.timer.getTime()
+  -- reset historique d'édition pour cette session
+  undo_stack = {}
+  redo_stack = {}
+  last_action = ""
+  last_action_t = 0
 end
 
 -- Helpers de sélection ----------------------------------------------------
@@ -604,14 +622,66 @@ local function line_bounds_at(pos)
   return ls, le
 end
 
+-- Saut de mot façon macOS (Option+Left/Right).
+local function jump_word_right(pos)
+  local n = #edit_text
+  while pos <= n and not edit_text:sub(pos, pos):match("[%w_]") do pos = pos + 1 end
+  while pos <= n and edit_text:sub(pos, pos):match("[%w_]") do pos = pos + 1 end
+  return pos
+end
+local function jump_word_left(pos)
+  pos = pos - 1
+  while pos > 0 and not edit_text:sub(pos, pos):match("[%w_]") do pos = pos - 1 end
+  while pos > 0 and edit_text:sub(pos, pos):match("[%w_]") do pos = pos - 1 end
+  return pos + 1
+end
+
+-- Undo/Redo. Coalesce les frappes consécutives en un seul groupe.
+local function snapshot()
+  return { text = edit_text, cursor = edit_cursor, anchor = edit_anchor }
+end
+local function push_undo(action)
+  local now = love.timer.getTime()
+  if action == "type" and last_action == "type"
+     and (now - last_action_t) < TYPE_COALESCE then
+    last_action_t = now
+    return
+  end
+  undo_stack[#undo_stack + 1] = snapshot()
+  if #undo_stack > UNDO_CAP then table.remove(undo_stack, 1) end
+  redo_stack = {}
+  last_action = action
+  last_action_t = now
+end
+local function apply_state(s)
+  edit_text = s.text
+  edit_cursor = s.cursor
+  edit_anchor = s.anchor
+end
+local function undo()
+  if #undo_stack == 0 then return end
+  redo_stack[#redo_stack + 1] = snapshot()
+  apply_state(table.remove(undo_stack))
+  last_action = "undo"; last_action_t = 0
+end
+local function redo()
+  if #redo_stack == 0 then return end
+  undo_stack[#undo_stack + 1] = snapshot()
+  apply_state(table.remove(redo_stack))
+  last_action = "redo"; last_action_t = 0
+end
+
 local function exit_edit_mode()
   edit_mode = false
 end
 
 local function save_edit()
   raw_slides_src[current] = edit_text
-  local body = table.concat(raw_slides_src, "\n\n---\n\n")
-  if body:sub(-1) ~= "\n" then body = body .. "\n" end
+  local parts = {}
+  for i, s in ipairs(raw_slides_src) do
+    parts[i] = trim_blank_lines(s)
+  end
+  local body = "\n" .. table.concat(parts, "\n\n---\n\n") .. "\n"
   local full = (raw_fm_src or "") .. body
   local f = io.open(deck_path, "w")
   if not f then flash("Erreur écriture"); return end
@@ -856,6 +926,9 @@ end
 local function is_shift_down()
   return love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")
 end
+local function is_alt_down()
+  return love.keyboard.isDown("lalt") or love.keyboard.isDown("ralt")
+end
 
 function love.keypressed(key)
   if edit_mode then
@@ -872,22 +945,32 @@ function love.keypressed(key)
       save_edit()
     elseif key == "e" and is_cmd_down() then
       exit_edit_mode()
+    elseif key == "z" and is_cmd_down() then
+      if shift then redo() else undo() end
+    elseif key == "y" and is_cmd_down() then
+      redo()
     elseif key == "a" and is_cmd_down() then
       edit_anchor = 1
       edit_cursor = #edit_text + 1
     elseif key == "c" and is_cmd_down() then
       copy_selection()
     elseif key == "x" and is_cmd_down() then
-      if copy_selection() then delete_selection() end
+      if sel_range() then
+        push_undo("other")
+        copy_selection()
+        delete_selection()
+      end
     elseif key == "v" and is_cmd_down() then
       local cb = love.system.getClipboardText() or ""
       if cb ~= "" then
+        push_undo("other")
         delete_selection()
         edit_text = edit_text:sub(1, edit_cursor - 1) .. cb .. edit_text:sub(edit_cursor)
         edit_cursor = edit_cursor + #cb
         edit_anchor = edit_cursor
       end
     elseif key == "backspace" then
+      push_undo("delete")
       if not delete_selection() then
         if edit_cursor > 1 then
           local prev = utf8.offset(edit_text, -1, edit_cursor) or 1
@@ -897,6 +980,7 @@ function love.keypressed(key)
         end
       end
     elseif key == "delete" then
+      push_undo("delete")
       if not delete_selection() then
         if edit_cursor <= #edit_text then
           local nxt = utf8.offset(edit_text, 2, edit_cursor) or (#edit_text + 1)
@@ -904,16 +988,21 @@ function love.keypressed(key)
         end
       end
     elseif key == "return" then
+      push_undo("other")
       delete_selection()
       edit_text = edit_text:sub(1, edit_cursor - 1) .. "\n" .. edit_text:sub(edit_cursor)
       edit_cursor = edit_cursor + 1
       edit_anchor = edit_cursor
     elseif key == "left" then
-      if edit_cursor > 1 then
+      if is_alt_down() then
+        collapse_to(jump_word_left(edit_cursor))
+      elseif edit_cursor > 1 then
         collapse_to(utf8.offset(edit_text, -1, edit_cursor) or 1)
       elseif not shift then edit_anchor = edit_cursor end
     elseif key == "right" then
-      if edit_cursor <= #edit_text then
+      if is_alt_down() then
+        collapse_to(jump_word_right(edit_cursor))
+      elseif edit_cursor <= #edit_text then
         collapse_to(utf8.offset(edit_text, 2, edit_cursor) or (#edit_text + 1))
       elseif not shift then edit_anchor = edit_cursor end
     elseif key == "up" then
@@ -955,6 +1044,7 @@ end
 
 function love.textinput(text)
   if not edit_mode then return end
+  push_undo("type")
   delete_selection()
   edit_text = edit_text:sub(1, edit_cursor - 1) .. text .. edit_text:sub(edit_cursor)
   edit_cursor = edit_cursor + #text
