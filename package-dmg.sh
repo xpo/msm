@@ -48,9 +48,23 @@ if [ -n "$SIGN_IDENTITY" ]; then
   spctl -a -t open --context context:primary-signature -v "$DMG_PATH" 2>&1 | tail -2 || true
 fi
 
+# 6) notarisation (si le profil trousseau `msm-notary` existe)
+if security find-generic-password -s "com.apple.gke.notary.tool" -a "msm-notary" >/dev/null 2>&1 \
+   || xcrun notarytool history --keychain-profile msm-notary >/dev/null 2>&1; then
+  echo "▸ notarisation (peut prendre 2-5 min)"
+  if xcrun notarytool submit "$DMG_PATH" --keychain-profile msm-notary --wait 2>&1 \
+       | tee /tmp/msm-notary.log | grep -q "status: Accepted"; then
+    echo "▸ agrafage du ticket sur le DMG"
+    xcrun stapler staple "$DMG_PATH" >/dev/null 2>&1 && echo "   ✅ staple DMG"
+    # agrafe aussi le .app autonome (utile si extrait du DMG en offline)
+    xcrun stapler staple "${APP_NAME}.app" >/dev/null 2>&1 && echo "   ✅ staple app"
+  else
+    echo "   ⚠ notarisation refusée, log : /tmp/msm-notary.log"
+  fi
+else
+  echo "▸ pas de profil 'msm-notary' dans le trousseau, étape de notarisation sautée"
+  echo "   Pour activer : xcrun notarytool store-credentials msm-notary --apple-id <email> --team-id DWLLGDWF4U"
+fi
+
 echo
 echo "✅ $DMG_PATH ($(du -h "$DMG_PATH" | cut -f1))"
-echo
-echo "Pour distribuer hors Gatekeeper sans avertissement, il faut notariser :"
-echo "  xcrun notarytool submit '$DMG_PATH' --apple-id <email> --team-id DWLLGDWF4U --password <app-specific> --wait"
-echo "  xcrun stapler staple '$DMG_PATH'"
