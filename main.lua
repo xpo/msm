@@ -35,7 +35,12 @@ local WATCH_INTERVAL = 0.6
 local edit_mode = false
 local edit_text = ""
 local edit_cursor = 1     -- 1..#edit_text+1 (position byte-based)
+local edit_anchor = 1     -- début de sélection (== cursor si pas de sélection)
 local edit_caret_seed = 0 -- pour faire clignoter / re-stabiliser le curseur
+local edit_dragging = false
+local edit_last_click_t = 0
+local edit_last_click_pos = 0
+local edit_click_count = 0
 
 local function file_mtime(path)
   if not path then return nil end
@@ -513,7 +518,90 @@ local function enter_edit_mode()
   edit_mode = true
   edit_text = raw_slides_src[current]
   edit_cursor = #edit_text + 1
+  edit_anchor = edit_cursor
+  edit_dragging = false
   edit_caret_seed = love.timer.getTime()
+end
+
+-- Helpers de sélection ----------------------------------------------------
+local function sel_range()
+  if edit_cursor == edit_anchor then return nil, nil end
+  return math.min(edit_cursor, edit_anchor), math.max(edit_cursor, edit_anchor)
+end
+
+local function delete_selection()
+  local mn, mx = sel_range()
+  if not mn then return false end
+  edit_text = edit_text:sub(1, mn - 1) .. edit_text:sub(mx)
+  edit_cursor = mn
+  edit_anchor = mn
+  return true
+end
+
+local function copy_selection()
+  local mn, mx = sel_range()
+  if not mn then return false end
+  love.system.setClipboardText(edit_text:sub(mn, mx - 1))
+  return true
+end
+
+local function mouse_to_caret(mx_, my_)
+  local pad = theme.padding
+  local font = fonts.code
+  local line_h = font:getHeight() + 4
+  local rel_y = my_ - pad
+  local target_line = math.max(1, math.floor(rel_y / line_h) + 1)
+
+  local i, ln = 1, 1
+  local n = #edit_text
+  while i <= n + 1 do
+    local le = i
+    while le <= n and edit_text:sub(le, le) ~= "\n" do le = le + 1 end
+    if ln == target_line then
+      local rel_x = mx_ - pad
+      if rel_x <= 0 then return i end
+      local pos = i
+      local prev_w = 0
+      while pos < le do
+        local nxt = utf8.offset(edit_text, 2, pos) or (pos + 1)
+        local cur_w = font:getWidth(edit_text:sub(i, nxt - 1))
+        local mid = (prev_w + cur_w) / 2
+        if rel_x < mid then return pos end
+        prev_w = cur_w
+        pos = nxt
+      end
+      return le
+    end
+    if i > n then break end
+    ln = ln + 1
+    i = le + 1
+  end
+  return #edit_text + 1
+end
+
+local function find_word_at(pos)
+  local n = #edit_text
+  local function is_word(c) return c:match("[%w_]") ~= nil end
+  local left = pos
+  while left > 1 do
+    local prev = utf8.offset(edit_text, -1, left) or 1
+    if not is_word(edit_text:sub(prev, prev)) then break end
+    left = prev
+  end
+  local right = pos
+  while right <= n do
+    if not is_word(edit_text:sub(right, right)) then break end
+    right = utf8.offset(edit_text, 2, right) or (right + 1)
+  end
+  return left, right
+end
+
+local function line_bounds_at(pos)
+  local ls = pos
+  while ls > 1 and edit_text:sub(ls - 1, ls - 1) ~= "\n" do ls = ls - 1 end
+  local le = pos
+  while le <= #edit_text and edit_text:sub(le, le) ~= "\n" do le = le + 1 end
+  return ls, le
 end
 
 local function exit_edit_mode()
@@ -568,27 +656,44 @@ local function draw_editor()
   local font = fonts.code
   love.graphics.setFont(font)
   local line_h = font:getHeight() + 4
+  local sel_min, sel_max = sel_range()
 
   love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.45)
   love.graphics.rectangle("line", pad - 12, pad - 12, W - (pad - 12) * 2, H - (pad - 12) * 2, 12, 12)
 
-  love.graphics.setColor(theme.color)
   local i, n = 1, #edit_text
   local y = pad
   while i <= n + 1 do
     local le = i
     while le <= n and edit_text:sub(le, le) ~= "\n" do le = le + 1 end
-    local line = edit_text:sub(i, le - 1)
-    love.graphics.print(line, pad, y)
+
+    -- highlight de la sélection pour cette ligne
+    if sel_min and sel_min < sel_max then
+      local s = math.max(i, sel_min)
+      local e = math.min(le, sel_max)
+      -- si la sélection englobe le \n de cette ligne, étend un peu vers la droite
+      local trailing = (sel_max > le) and 12 or 0
+      if s < e or trailing > 0 then
+        local x1 = pad + font:getWidth(edit_text:sub(i, s - 1))
+        local x2 = pad + font:getWidth(edit_text:sub(i, e - 1)) + trailing
+        love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.28)
+        love.graphics.rectangle("fill", x1, y - 2, math.max(2, x2 - x1), line_h)
+      end
+    end
+
+    -- texte
+    love.graphics.setColor(theme.color)
+    love.graphics.print(edit_text:sub(i, le - 1), pad, y)
+
+    -- curseur
     if edit_cursor >= i and edit_cursor <= le then
-      local prefix = edit_text:sub(i, edit_cursor - 1)
-      local cx = pad + font:getWidth(prefix)
+      local cx = pad + font:getWidth(edit_text:sub(i, edit_cursor - 1))
       if (love.timer.getTime() - edit_caret_seed) % 1 < 0.55 then
         love.graphics.setColor(theme.accent)
         love.graphics.rectangle("fill", cx, y - 2, 2, line_h)
-        love.graphics.setColor(theme.color)
       end
     end
+
     y = y + line_h
     i = le + 1
     if i > n + 1 then break end
@@ -748,53 +853,81 @@ local function is_cmd_down()
      or love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl")
 end
 
+local function is_shift_down()
+  return love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")
+end
+
 function love.keypressed(key)
   if edit_mode then
     edit_caret_seed = love.timer.getTime()
+    local shift = is_shift_down()
+    local function collapse_to(p)
+      edit_cursor = p
+      if not shift then edit_anchor = p end
+    end
+
     if key == "escape" then
       exit_edit_mode()
     elseif key == "s" and is_cmd_down() then
       save_edit()
     elseif key == "e" and is_cmd_down() then
       exit_edit_mode()
-    elseif key == "backspace" then
-      if edit_cursor > 1 then
-        local prev = utf8.offset(edit_text, -1, edit_cursor) or 1
-        edit_text = edit_text:sub(1, prev - 1) .. edit_text:sub(edit_cursor)
-        edit_cursor = prev
-      end
-    elseif key == "delete" then
-      if edit_cursor <= #edit_text then
-        local nxt = utf8.offset(edit_text, 2, edit_cursor) or (#edit_text + 1)
-        edit_text = edit_text:sub(1, edit_cursor - 1) .. edit_text:sub(nxt)
-      end
-    elseif key == "return" then
-      edit_text = edit_text:sub(1, edit_cursor - 1) .. "\n" .. edit_text:sub(edit_cursor)
-      edit_cursor = edit_cursor + 1
-    elseif key == "left" then
-      if edit_cursor > 1 then edit_cursor = utf8.offset(edit_text, -1, edit_cursor) or 1 end
-    elseif key == "right" then
-      if edit_cursor <= #edit_text then
-        edit_cursor = utf8.offset(edit_text, 2, edit_cursor) or (#edit_text + 1)
-      end
-    elseif key == "up" then
-      edit_cursor = caret_move_vert(edit_text, edit_cursor, -1)
-    elseif key == "down" then
-      edit_cursor = caret_move_vert(edit_text, edit_cursor, 1)
-    elseif key == "home" then
-      while edit_cursor > 1 and edit_text:sub(edit_cursor - 1, edit_cursor - 1) ~= "\n" do
-        edit_cursor = edit_cursor - 1
-      end
-    elseif key == "end" then
-      while edit_cursor <= #edit_text and edit_text:sub(edit_cursor, edit_cursor) ~= "\n" do
-        edit_cursor = edit_cursor + 1
-      end
+    elseif key == "a" and is_cmd_down() then
+      edit_anchor = 1
+      edit_cursor = #edit_text + 1
+    elseif key == "c" and is_cmd_down() then
+      copy_selection()
+    elseif key == "x" and is_cmd_down() then
+      if copy_selection() then delete_selection() end
     elseif key == "v" and is_cmd_down() then
       local cb = love.system.getClipboardText() or ""
       if cb ~= "" then
+        delete_selection()
         edit_text = edit_text:sub(1, edit_cursor - 1) .. cb .. edit_text:sub(edit_cursor)
         edit_cursor = edit_cursor + #cb
+        edit_anchor = edit_cursor
       end
+    elseif key == "backspace" then
+      if not delete_selection() then
+        if edit_cursor > 1 then
+          local prev = utf8.offset(edit_text, -1, edit_cursor) or 1
+          edit_text = edit_text:sub(1, prev - 1) .. edit_text:sub(edit_cursor)
+          edit_cursor = prev
+          edit_anchor = prev
+        end
+      end
+    elseif key == "delete" then
+      if not delete_selection() then
+        if edit_cursor <= #edit_text then
+          local nxt = utf8.offset(edit_text, 2, edit_cursor) or (#edit_text + 1)
+          edit_text = edit_text:sub(1, edit_cursor - 1) .. edit_text:sub(nxt)
+        end
+      end
+    elseif key == "return" then
+      delete_selection()
+      edit_text = edit_text:sub(1, edit_cursor - 1) .. "\n" .. edit_text:sub(edit_cursor)
+      edit_cursor = edit_cursor + 1
+      edit_anchor = edit_cursor
+    elseif key == "left" then
+      if edit_cursor > 1 then
+        collapse_to(utf8.offset(edit_text, -1, edit_cursor) or 1)
+      elseif not shift then edit_anchor = edit_cursor end
+    elseif key == "right" then
+      if edit_cursor <= #edit_text then
+        collapse_to(utf8.offset(edit_text, 2, edit_cursor) or (#edit_text + 1))
+      elseif not shift then edit_anchor = edit_cursor end
+    elseif key == "up" then
+      collapse_to(caret_move_vert(edit_text, edit_cursor, -1))
+    elseif key == "down" then
+      collapse_to(caret_move_vert(edit_text, edit_cursor, 1))
+    elseif key == "home" then
+      local p = edit_cursor
+      while p > 1 and edit_text:sub(p - 1, p - 1) ~= "\n" do p = p - 1 end
+      collapse_to(p)
+    elseif key == "end" then
+      local p = edit_cursor
+      while p <= #edit_text and edit_text:sub(p, p) ~= "\n" do p = p + 1 end
+      collapse_to(p)
     end
     return
   end
@@ -822,8 +955,10 @@ end
 
 function love.textinput(text)
   if not edit_mode then return end
+  delete_selection()
   edit_text = edit_text:sub(1, edit_cursor - 1) .. text .. edit_text:sub(edit_cursor)
   edit_cursor = edit_cursor + #text
+  edit_anchor = edit_cursor
   edit_caret_seed = love.timer.getTime()
 end
 
@@ -834,10 +969,45 @@ function love.filedropped(file)
   end
 end
 
-function love.mousepressed(_, _, button)
-  if edit_mode then return end
+function love.mousepressed(x, y, button)
+  if edit_mode then
+    if button ~= 1 then return end
+    local pos = mouse_to_caret(x, y)
+    local now = love.timer.getTime()
+    local close = (now - edit_last_click_t < 0.4)
+        and math.abs(pos - edit_last_click_pos) <= 1
+    edit_click_count = close and (edit_click_count + 1) or 1
+    edit_last_click_t = now
+    edit_last_click_pos = pos
+
+    if edit_click_count == 1 then
+      edit_cursor = pos
+      if not is_shift_down() then edit_anchor = pos end
+      edit_dragging = true
+    elseif edit_click_count == 2 then
+      local wl, wr = find_word_at(pos)
+      edit_anchor, edit_cursor = wl, wr
+    elseif edit_click_count >= 3 then
+      local ls, le = line_bounds_at(pos)
+      edit_anchor, edit_cursor = ls, le
+      edit_click_count = 0
+    end
+    edit_caret_seed = love.timer.getTime()
+    return
+  end
   if button == 1 then go_to(current + 1)
   elseif button == 2 then go_to(current - 1) end
+end
+
+function love.mousemoved(x, y)
+  if edit_mode and edit_dragging then
+    edit_cursor = mouse_to_caret(x, y)
+    edit_caret_seed = love.timer.getTime()
+  end
+end
+
+function love.mousereleased(_, _, button)
+  if edit_mode and button == 1 then edit_dragging = false end
 end
 
 function love.wheelmoved(_, y)
