@@ -7,8 +7,7 @@ mSM.love
 example-build.html
 
 # Decks privés (use cases)
-sl-uc1-*
-sl-uc2-*
+sl-*
 
 # Tags Release (zips produits localement)
 *.app.zip

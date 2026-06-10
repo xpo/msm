@@ -8,14 +8,23 @@ align: left
 transition: slide
 transitionDuration: 0.35
 ---
-
 # mSM
 
 ### .md Slide Machine
 
 Un moteur de présentation minimal, écrit en Lua !
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 ## Pourquoi ?
 
@@ -24,7 +33,17 @@ Un moteur de présentation minimal, écrit en Lua !
 - Démarre en une seconde
 - Pas de build, pas de CSS
 
+
+
+eee
+
+
 ---
+
+
+
+
+
 
 ## Format
 
@@ -39,7 +58,17 @@ Les slides sont séparées par une ligne `---`.
 ![alt](chemin/image.png)
 ```
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 ## Images
 
@@ -47,7 +76,17 @@ Les slides sont séparées par une ligne `---`.
 
 *(mettez une image dans `assets/` pour la voir ici)*
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 ## Citations
 
@@ -55,7 +94,17 @@ Les slides sont séparées par une ligne `---`.
 
 — attribué à Léonard de Vinci
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 ## Inline markdown
 
@@ -75,7 +124,17 @@ Vous pouvez mettre du **gras**, de l'*italique*, du `code`, du ~~barré~~ et des
 
     -> Deux niveaux d'indentation, etc.
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 ## Transitions
 
@@ -86,7 +145,17 @@ Au choix dans l'en-tête :
 - `push` — pousse + fondu
 - `none` — coupe franche
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 ## Tables
 
@@ -101,7 +170,17 @@ Au choix dans l'en-tête :
 
 Alignement par colonne via `:---`, `:---:`, `---:` dans la ligne de séparation.
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 ## Dépassement
 
@@ -122,7 +201,17 @@ Exemple : cette slide est volontairement longue pour tester.
 - Point 5
 - Point 6
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 ## Raccourcis
 
@@ -133,7 +222,17 @@ Exemple : cette slide est volontairement longue pour tester.
 - **R** : recharger le deck
 - **Q / Échap** : quitter
 
+
+
+
+
+
 ---
+
+
+
+
+
 
 # Merci.
 

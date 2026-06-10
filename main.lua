@@ -18,12 +18,39 @@ end
 local deck_path
 local deck_dir = ""
 local meta, slides = {}, {}
+local raw_slides_src = {}
+local raw_fm_src = ""
 local fonts = {}
 local theme = {}
 
 local current, previous = 1, 1
 local trans_t = 1 -- 1 = no transition in progress
+
+-- file watcher
+local watch_mtime = nil
+local watch_timer = 0
+local WATCH_INTERVAL = 0.6
+
+-- editor state
+local edit_mode = false
+local edit_text = ""
+local edit_cursor = 1     -- 1..#edit_text+1 (position byte-based)
+local edit_caret_seed = 0 -- pour faire clignoter / re-stabiliser le curseur
+
+local function file_mtime(path)
+  if not path then return nil end
+  local quoted = path:gsub("'", "'\\''")
+  local h = io.popen("stat -f %m '" .. quoted .. "' 2>/dev/null")
+  if not h then return nil end
+  local s = h:read("*a") or ""
+  h:close()
+  return tonumber(s)
+end
 local flash_msg, flash_t = nil, 0
+local function flash(msg, seconds)
+  flash_msg = msg
+  flash_t = seconds or 3.5
+end
 
 local THEMES = {
   dark  = { background = "#111318", color = "#eef2f7", accent = "#ff7a59", muted = "#8a93a3",
@@ -185,7 +212,9 @@ local function load_deck(path, preserve_position)
   local saved = current
   deck_path = path
   deck_dir = path:match("^(.*/)") or path:match("^(.*\\)") or ""
-  meta, slides = parser.parse(text)
+  meta, slides, raw_slides_src, raw_fm_src = parser.parse(text)
+  raw_slides_src = raw_slides_src or {}
+  raw_fm_src = raw_fm_src or ""
   apply_theme()
   preload_images()
   if preserve_position and #slides > 0 then
@@ -194,6 +223,8 @@ local function load_deck(path, preserve_position)
     current = 1
   end
   previous, trans_t = current, 1
+  -- baseline mtime du fichier juste chargé (pour ne pas retriger le watcher)
+  watch_mtime = file_mtime(path)
   love.window.setTitle("mSM — " .. (path:match("([^/\\]+)$") or path))
 end
 
@@ -459,11 +490,116 @@ function love.update(dt)
     trans_t = math.min(1, trans_t + dt / math.max(0.0001, theme.duration))
   end
   if flash_t > 0 then flash_t = flash_t - dt end
+  -- watcher : recharge le deck si le .md a changé sur disque (et pas en édition)
+  if deck_path and not edit_mode then
+    watch_timer = watch_timer + dt
+    if watch_timer >= WATCH_INTERVAL then
+      watch_timer = 0
+      local mt = file_mtime(deck_path)
+      if mt then
+        if watch_mtime and mt > watch_mtime + 0.01 then
+          load_deck(deck_path, true)
+        end
+        watch_mtime = mt
+      end
+    end
+  end
 end
 
-local function flash(msg, seconds)
-  flash_msg = msg
-  flash_t = seconds or 3.5
+-- ---------- éditeur in-app ----------
+local function enter_edit_mode()
+  if not deck_path or #slides == 0 then flash("Rien à éditer"); return end
+  if not raw_slides_src[current] then flash("Slide introuvable"); return end
+  edit_mode = true
+  edit_text = raw_slides_src[current]
+  edit_cursor = #edit_text + 1
+  edit_caret_seed = love.timer.getTime()
+end
+
+local function exit_edit_mode()
+  edit_mode = false
+end
+
+local function save_edit()
+  raw_slides_src[current] = edit_text
+  local body = table.concat(raw_slides_src, "\n\n---\n\n")
+  if body:sub(-1) ~= "\n" then body = body .. "\n" end
+  local full = (raw_fm_src or "") .. body
+  local f = io.open(deck_path, "w")
+  if not f then flash("Erreur écriture"); return end
+  f:write(full); f:close()
+  edit_mode = false
+  load_deck(deck_path, true)
+  flash("Enregistré", 1.5)
+end
+
+local function caret_move_vert(text, cursor, dir)
+  local line_start = cursor
+  while line_start > 1 and text:sub(line_start - 1, line_start - 1) ~= "\n" do
+    line_start = line_start - 1
+  end
+  local col = cursor - line_start
+  if dir < 0 then
+    if line_start <= 1 then return cursor end
+    local prev_end = line_start - 1
+    local prev_start = prev_end
+    while prev_start > 1 and text:sub(prev_start - 1, prev_start - 1) ~= "\n" do
+      prev_start = prev_start - 1
+    end
+    return prev_start + math.min(col, prev_end - prev_start)
+  else
+    local cur_end = cursor
+    while cur_end <= #text and text:sub(cur_end, cur_end) ~= "\n" do
+      cur_end = cur_end + 1
+    end
+    if cur_end > #text then return cursor end
+    local nxt_start = cur_end + 1
+    local nxt_end = nxt_start
+    while nxt_end <= #text and text:sub(nxt_end, nxt_end) ~= "\n" do
+      nxt_end = nxt_end + 1
+    end
+    return nxt_start + math.min(col, nxt_end - nxt_start)
+  end
+end
+
+local function draw_editor()
+  local W, H = love.graphics.getDimensions()
+  local pad = theme.padding
+  local font = fonts.code
+  love.graphics.setFont(font)
+  local line_h = font:getHeight() + 4
+
+  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.45)
+  love.graphics.rectangle("line", pad - 12, pad - 12, W - (pad - 12) * 2, H - (pad - 12) * 2, 12, 12)
+
+  love.graphics.setColor(theme.color)
+  local i, n = 1, #edit_text
+  local y = pad
+  while i <= n + 1 do
+    local le = i
+    while le <= n and edit_text:sub(le, le) ~= "\n" do le = le + 1 end
+    local line = edit_text:sub(i, le - 1)
+    love.graphics.print(line, pad, y)
+    if edit_cursor >= i and edit_cursor <= le then
+      local prefix = edit_text:sub(i, edit_cursor - 1)
+      local cx = pad + font:getWidth(prefix)
+      if (love.timer.getTime() - edit_caret_seed) % 1 < 0.55 then
+        love.graphics.setColor(theme.accent)
+        love.graphics.rectangle("fill", cx, y - 2, 2, line_h)
+        love.graphics.setColor(theme.color)
+      end
+    end
+    y = y + line_h
+    i = le + 1
+    if i > n + 1 then break end
+  end
+
+  love.graphics.setFont(fonts.small)
+  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.9)
+  love.graphics.print(
+    "EDIT  ·  ⌘S enregistrer  ·  Esc / ⌘E annuler  ·  slide " .. current .. "/" .. #slides,
+    pad, H - 28
+  )
 end
 
 local function get_template()
@@ -542,6 +678,20 @@ function love.draw()
   love.graphics.clear(theme.background)
   if #slides == 0 then return end
 
+  if edit_mode then
+    draw_editor()
+    if flash_t > 0 and flash_msg then
+      local alpha = math.min(1, flash_t * 1.2)
+      local W = love.graphics.getWidth(); local H = love.graphics.getHeight()
+      love.graphics.setFont(fonts.small)
+      love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], alpha * 0.92)
+      love.graphics.rectangle("fill", 0, H - 44, W, 44)
+      love.graphics.setColor(1, 1, 1, alpha)
+      love.graphics.printf(flash_msg, 20, H - 30, W - 40, "center")
+    end
+    return
+  end
+
   local W = love.graphics.getWidth()
   if trans_t < 1 and previous ~= current then
     local t = ease(trans_t)
@@ -593,7 +743,62 @@ local function go_to(n)
   end
 end
 
+local function is_cmd_down()
+  return love.keyboard.isDown("lgui") or love.keyboard.isDown("rgui")
+     or love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl")
+end
+
 function love.keypressed(key)
+  if edit_mode then
+    edit_caret_seed = love.timer.getTime()
+    if key == "escape" then
+      exit_edit_mode()
+    elseif key == "s" and is_cmd_down() then
+      save_edit()
+    elseif key == "e" and is_cmd_down() then
+      exit_edit_mode()
+    elseif key == "backspace" then
+      if edit_cursor > 1 then
+        local prev = utf8.offset(edit_text, -1, edit_cursor) or 1
+        edit_text = edit_text:sub(1, prev - 1) .. edit_text:sub(edit_cursor)
+        edit_cursor = prev
+      end
+    elseif key == "delete" then
+      if edit_cursor <= #edit_text then
+        local nxt = utf8.offset(edit_text, 2, edit_cursor) or (#edit_text + 1)
+        edit_text = edit_text:sub(1, edit_cursor - 1) .. edit_text:sub(nxt)
+      end
+    elseif key == "return" then
+      edit_text = edit_text:sub(1, edit_cursor - 1) .. "\n" .. edit_text:sub(edit_cursor)
+      edit_cursor = edit_cursor + 1
+    elseif key == "left" then
+      if edit_cursor > 1 then edit_cursor = utf8.offset(edit_text, -1, edit_cursor) or 1 end
+    elseif key == "right" then
+      if edit_cursor <= #edit_text then
+        edit_cursor = utf8.offset(edit_text, 2, edit_cursor) or (#edit_text + 1)
+      end
+    elseif key == "up" then
+      edit_cursor = caret_move_vert(edit_text, edit_cursor, -1)
+    elseif key == "down" then
+      edit_cursor = caret_move_vert(edit_text, edit_cursor, 1)
+    elseif key == "home" then
+      while edit_cursor > 1 and edit_text:sub(edit_cursor - 1, edit_cursor - 1) ~= "\n" do
+        edit_cursor = edit_cursor - 1
+      end
+    elseif key == "end" then
+      while edit_cursor <= #edit_text and edit_text:sub(edit_cursor, edit_cursor) ~= "\n" do
+        edit_cursor = edit_cursor + 1
+      end
+    elseif key == "v" and is_cmd_down() then
+      local cb = love.system.getClipboardText() or ""
+      if cb ~= "" then
+        edit_text = edit_text:sub(1, edit_cursor - 1) .. cb .. edit_text:sub(edit_cursor)
+        edit_cursor = edit_cursor + #cb
+      end
+    end
+    return
+  end
+
   if key == "escape" or key == "q" then
     love.event.quit()
   elseif key == "right" or key == "space" or key == "pagedown" or key == "return" or key == "down" then
@@ -609,10 +814,17 @@ function love.keypressed(key)
   elseif key == "r" then
     if deck_path then load_deck(deck_path, true) end
   elseif key == "e" then
-    export_current_deck()
+    if is_cmd_down() then enter_edit_mode() else export_current_deck() end
   elseif key == "tab" then
     open_in_editor()
   end
+end
+
+function love.textinput(text)
+  if not edit_mode then return end
+  edit_text = edit_text:sub(1, edit_cursor - 1) .. text .. edit_text:sub(edit_cursor)
+  edit_cursor = edit_cursor + #text
+  edit_caret_seed = love.timer.getTime()
 end
 
 function love.filedropped(file)
@@ -623,11 +835,13 @@ function love.filedropped(file)
 end
 
 function love.mousepressed(_, _, button)
+  if edit_mode then return end
   if button == 1 then go_to(current + 1)
   elseif button == 2 then go_to(current - 1) end
 end
 
 function love.wheelmoved(_, y)
+  if edit_mode then return end
   if y < 0 then go_to(current + 1)
   elseif y > 0 then go_to(current - 1) end
 end

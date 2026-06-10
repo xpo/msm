@@ -5,14 +5,14 @@ local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 
 local function parse_frontmatter(text)
   local meta = {}
-  if not text:match("^%-%-%-%s*\n") then return meta, text end
+  if not text:match("^%-%-%-%s*\n") then return meta, text, "" end
   local inner, rest = text:match("^%-%-%-%s*\n(.-)\n%-%-%-%s*\n(.*)$")
-  if not inner then return meta, text end
+  if not inner then return meta, text, "" end
   for line in inner:gmatch("[^\n]+") do
     local k, v = line:match("^%s*([%w_%-]+)%s*:%s*(.-)%s*$")
     if k then meta[k] = v end
   end
-  return meta, rest
+  return meta, rest, "---\n" .. inner .. "\n---\n"
 end
 
 local function split_slides(body)
@@ -131,14 +131,18 @@ end
 
 function M.parse(text)
   text = text:gsub("\r\n", "\n")
-  local meta, body = parse_frontmatter(text)
+  local meta, body, raw_fm = parse_frontmatter(text)
   local raw = split_slides(body)
   local slides = {}
+  local raw_slides = {}
   for _, lines in ipairs(raw) do
     local s = parse_slide(lines)
-    if #s > 0 then table.insert(slides, s) end
+    if #s > 0 then
+      table.insert(slides, s)
+      table.insert(raw_slides, table.concat(lines, "\n"))
+    end
   end
-  return meta, slides
+  return meta, slides, raw_slides, raw_fm
 end
 
 return M

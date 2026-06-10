@@ -267,7 +267,12 @@ Pour un deck avec zéro animation : `transition: none` + `transitionDuration: 0`
 | `R`                                        | Recharge le deck     |
 | `E`                                        | Exporter en HTML autonome (dialogue de sauvegarde) |
 | `Tab`                                      | Ouvrir le `.md` dans l'éditeur par défaut (MarkEdit, …) |
+| `⌘E`                                       | Éditer la slide courante dans l'app (source markdown brute) |
+| `⌘S` (en édition)                          | Enregistrer + sortir du mode édition |
+| `Esc` (en édition)                         | Annuler les modifications |
 | `Q` / `Échap`                              | Quitter              |
+
+L'app surveille aussi le `.md` sur disque : si tu l'édites dans une autre app (MarkEdit via `Tab` par exemple) et que tu sauvegardes, mSM recharge automatiquement le deck en conservant la slide courante.
 | Clic gauche / molette bas                  | Suivante             |
 | Clic droit / molette haut                  | Précédente           |
 
