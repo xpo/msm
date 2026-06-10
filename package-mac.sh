@@ -95,21 +95,24 @@ SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
   | awk -F\" '/Developer ID Application/ {print $2; exit}')"
 if [ -n "$SIGN_IDENTITY" ]; then
   echo "   → identité : $SIGN_IDENTITY"
+  ENTITLEMENTS="$(pwd)/entitlements.plist"
   # Le binaire fusionné (love + .love) hérite d'une signature linker ad-hoc
   # qui bloque la re-signature stricte. On la supprime d'abord.
   codesign --remove-signature "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
-  # Signe frameworks/dylibs/bundles intégrés
+  # Signe frameworks/dylibs/bundles intégrés (pas d'entitlements pour eux)
   find "$APP_NAME.app/Contents/Frameworks" \
     \( -name "*.dylib" -o -name "*.framework" -o -name "*.bundle" \) 2>/dev/null \
     | while read -r item; do
         codesign --force --options runtime --timestamp \
           --sign "$SIGN_IDENTITY" "$item" >/dev/null 2>&1
       done
-  # Signe le binaire principal (post-fusion)
+  # Signe le binaire principal AVEC les entitlements JIT (LuaJIT en a besoin)
   codesign --force --options runtime --timestamp \
+    --entitlements "$ENTITLEMENTS" \
     --sign "$SIGN_IDENTITY" "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1
-  # Puis le bundle entier
+  # Signe le bundle (les entitlements ne sont attachés qu'au binaire principal)
   codesign --force --options runtime --timestamp --deep \
+    --entitlements "$ENTITLEMENTS" \
     --sign "$SIGN_IDENTITY" "$APP_NAME.app" >/dev/null 2>&1 || {
       echo "   ⚠ signature développeur échouée, fallback ad-hoc"
       codesign --force --deep --sign - "$APP_NAME.app" >/dev/null 2>&1 || true

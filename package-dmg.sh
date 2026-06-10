@@ -52,14 +52,16 @@ fi
 if security find-generic-password -s "com.apple.gke.notary.tool" -a "msm-notary" >/dev/null 2>&1 \
    || xcrun notarytool history --keychain-profile msm-notary >/dev/null 2>&1; then
   echo "▸ notarisation (peut prendre 2-5 min)"
-  if xcrun notarytool submit "$DMG_PATH" --keychain-profile msm-notary --wait 2>&1 \
-       | tee /tmp/msm-notary.log | grep -q "status: Accepted"; then
+  set +e
+  xcrun notarytool submit "$DMG_PATH" --keychain-profile msm-notary --wait > /tmp/msm-notary.log 2>&1
+  set -e
+  if grep -q "status: Accepted" /tmp/msm-notary.log; then
     echo "▸ agrafage du ticket sur le DMG"
     xcrun stapler staple "$DMG_PATH" >/dev/null 2>&1 && echo "   ✅ staple DMG"
-    # agrafe aussi le .app autonome (utile si extrait du DMG en offline)
     xcrun stapler staple "${APP_NAME}.app" >/dev/null 2>&1 && echo "   ✅ staple app"
   else
-    echo "   ⚠ notarisation refusée, log : /tmp/msm-notary.log"
+    echo "   ⚠ notarisation refusée, log :"
+    tail -10 /tmp/msm-notary.log | sed 's/^/      /'
   fi
 else
   echo "▸ pas de profil 'msm-notary' dans le trousseau, étape de notarisation sautée"
