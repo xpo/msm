@@ -7,6 +7,9 @@ padding: 90
 align: left
 transition: slide
 transitionDuration: 0.35
+motion: mesh
+animate: stagger
+kenburns: true
 ---
 # mSM
 

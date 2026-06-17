@@ -142,6 +142,11 @@ Toutes les clés sont optionnelles. Les couleurs sont en hexadécimal (`#rrggbb`
 | `showIndex`           | `true`    | Affiche `n / total` en bas à droite                 |
 | `overflow`            | `shrink`  | Gestion du dépassement : `shrink` ou `clip`         |
 | `minScale`            | `0.45`    | Échelle minimum en mode `shrink` avant clipping     |
+| `motion`              | `static`  | Background animé : `static`, `mesh`, `aurora`, `grain`, `particles` |
+| `animate`             | `stagger` | Animation des éléments à l'entrée : `stagger` ou `none` |
+| `kenburns`            | `true`    | Ken Burns sur images (zoom + pan lent), désactivable avec `false` |
+| `template`            | —         | Charge `templates/<nom>/` comme defaults (palette + logo + motion) |
+| `logo`                | —         | Chemin vers une image affichée en bas-droite (opacité 0.7)         |
 
 Un preset définit six couleurs (`background`, `color`, `accent`, `h2`, `h3`, `muted`) ; toute couleur explicite dans le frontmatter a la priorité.
 
@@ -204,6 +209,45 @@ Quand une slide est plus haute que l'espace disponible, `overflow` choisit la st
 - **`clip`** : garde la taille, coupe ce qui dépasse au bas du cadre.
 
 `minScale` (défaut `0.45`) est le plancher en mode `shrink`. Si le contenu est tellement grand qu'il faudrait descendre en dessous, mSM s'arrête à `minScale` et clippe le reste — pour éviter le texte illisible.
+
+### Animation et présence : motion, stagger, ken burns
+
+mSM ajoute de la vie aux slides sans toucher au markdown.
+
+**Backgrounds animés** via `motion: <nom>` :
+
+- `static` (défaut) : fond plat, palette du thème
+- `mesh` : blobs colorés qui dérivent lentement (Stripe/Pitch style)
+- `aurora` : bandes de couleur ondulantes
+- `grain` : grain de film léger sur tout
+- `particles` : petits points sparse qui dérivent
+
+Côté desktop : shaders GLSL légers. Côté web : `radial-gradient` / `linear-gradient` CSS animés. Subtil par défaut (~17-22% d'opacité de blend), pour ne jamais voler la vedette au contenu.
+
+**Stagger** (activé par défaut) : chaque élément d'une slide apparaît avec un léger décalage (titre puis sous-titre puis puces une par une, +60 ms par élément). Désactivable avec `animate: none`.
+
+**Ken Burns** (activé par défaut sur les images) : zoom lent (+6% sur 22 s) + pan minimal, donne du mouvement aux photos. Désactivable avec `kenburns: false`.
+
+### Templates
+
+Permettent de packager une identité (palette + logo + background + tailles) en un mot-clé :
+
+```yaml
+template: askem
+```
+
+Charge `templates/askem/template.lua` qui définit les defaults. Toute clé explicite dans le frontmatter d'un deck surcharge le template.
+
+Structure :
+
+```
+templates/
+└── askem/
+    ├── template.lua       # palette + logo + motion par défaut
+    └── logo.png           # ajouté par toi, 100-200 px de haut idéalement
+```
+
+Pour créer ton propre template : copie `templates/askem/` sous un autre nom, édite `template.lua`. Le runtime web a une copie en dur dans `msm.html` (objet `TEMPLATES`), à synchroniser si tu publies un template partagé.
 
 ### Diagrammes Mermaid
 

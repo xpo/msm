@@ -102,6 +102,100 @@
     pre code { background: transparent; color: inherit; padding: 0; font-size: inherit; border-radius: 0; }
     .mermaid { display: block; margin: 0.5em auto; max-width: 100%; max-height: 70vh; overflow: hidden; text-align: center; }
     .mermaid svg { max-width: 100%; max-height: 70vh; height: auto; }
+
+    /* ---- Motion : backgrounds animés ---- */
+    @keyframes mesh-drift {
+      0%, 100% { background-position: 0% 50%, 100% 50%, 50% 0%; }
+      50%      { background-position: 60% 65%, 30% 30%, 80% 70%; }
+    }
+    body.motion-mesh::before {
+      content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 45%),
+        radial-gradient(circle at 30% 70%, color-mix(in srgb, var(--h2) 22%, transparent), transparent 45%),
+        radial-gradient(circle at 80% 30%, color-mix(in srgb, var(--h3) 22%, transparent), transparent 45%);
+      background-size: 200% 200%, 200% 200%, 200% 200%;
+      animation: mesh-drift 60s ease-in-out infinite;
+    }
+    @keyframes aurora-drift {
+      0%, 100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+    body.motion-aurora::before {
+      content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background-color: var(--bg);
+      background-image: linear-gradient(60deg,
+        color-mix(in srgb, var(--accent) 17%, transparent),
+        color-mix(in srgb, var(--h2) 17%, transparent),
+        color-mix(in srgb, var(--h3) 17%, transparent),
+        color-mix(in srgb, var(--accent) 17%, transparent));
+      background-size: 300% 300%;
+      animation: aurora-drift 40s ease-in-out infinite;
+    }
+    @keyframes grain-shift {
+      0% { transform: translate(0, 0); } 25% { transform: translate(-3%, 4%); }
+      50% { transform: translate(4%, -3%); } 75% { transform: translate(-2%, -3%); }
+      100% { transform: translate(0, 0); }
+    }
+    body.motion-grain::after {
+      content: ""; position: fixed; inset: -10%; z-index: 5; pointer-events: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.5'/></svg>");
+      mix-blend-mode: overlay;
+      opacity: 0.06;
+      animation: grain-shift 1.5s steps(6) infinite;
+    }
+    @keyframes particles-drift {
+      0%, 100% { transform: translate(0, 0); } 50% { transform: translate(20px, -15px); }
+    }
+    body.motion-particles::before {
+      content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(circle 2px at 20% 30%, color-mix(in srgb, var(--color) 30%, transparent), transparent 100%),
+        radial-gradient(circle 1.5px at 70% 80%, color-mix(in srgb, var(--color) 25%, transparent), transparent 100%),
+        radial-gradient(circle 2px at 80% 20%, color-mix(in srgb, var(--color) 30%, transparent), transparent 100%),
+        radial-gradient(circle 1.5px at 30% 80%, color-mix(in srgb, var(--color) 25%, transparent), transparent 100%),
+        radial-gradient(circle 1px at 50% 50%, color-mix(in srgb, var(--color) 20%, transparent), transparent 100%);
+      animation: particles-drift 25s ease-in-out infinite;
+    }
+
+    /* ---- Stagger des éléments à l'entrée ---- */
+    @keyframes stagger-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: none; }
+    }
+    body.animate-stagger .slide.current .content > * {
+      animation: stagger-in 0.4s ease-out both;
+    }
+    body.animate-stagger .slide.current .content > *:nth-child(1) { animation-delay: 0s; }
+    body.animate-stagger .slide.current .content > *:nth-child(2) { animation-delay: .06s; }
+    body.animate-stagger .slide.current .content > *:nth-child(3) { animation-delay: .12s; }
+    body.animate-stagger .slide.current .content > *:nth-child(4) { animation-delay: .18s; }
+    body.animate-stagger .slide.current .content > *:nth-child(5) { animation-delay: .24s; }
+    body.animate-stagger .slide.current .content > *:nth-child(6) { animation-delay: .30s; }
+    body.animate-stagger .slide.current .content > *:nth-child(7) { animation-delay: .36s; }
+    body.animate-stagger .slide.current .content > *:nth-child(8) { animation-delay: .42s; }
+    body.animate-stagger .slide.current .content > *:nth-child(9) { animation-delay: .48s; }
+    body.animate-stagger .slide.current .content > *:nth-child(n+10) { animation-delay: .54s; }
+
+    /* ---- Ken Burns sur images ---- */
+    @keyframes ken-burns {
+      0%, 100% { transform: scale(1) translate(0, 0); }
+      50%      { transform: scale(1.06) translate(-1%, 1%); }
+    }
+    body.kenburns-on .slide.current img,
+    body.kenburns-on .slide.current .mermaid svg {
+      animation: ken-burns 22s ease-in-out infinite;
+      transform-origin: center;
+    }
+
+    /* ---- Logo overlay ---- */
+    .deck-logo {
+      position: fixed; right: 24px; bottom: 24px;
+      max-height: 48px; opacity: 0.7;
+      pointer-events: none; z-index: 40;
+    }
     table { border-collapse: collapse; margin: 0.5em auto; font-size: var(--font-size); }
     table th, table td { padding: 0.5em 0.9em; }
     table th {
@@ -297,6 +391,19 @@
   // ---------- renderer ----------
   const THEMES = new Set(["dark", "light", "cream", "slate", "solar"]);
   const TRANS = new Set(["fade", "slide", "push", "none"]);
+  const MOTION = new Set(["static", "mesh", "aurora", "grain", "particles"]);
+
+  // Templates : miroir des fichiers templates/<nom>/template.lua côté desktop.
+  // Les valeurs ne s'appliquent que si meta ne les surcharge pas.
+  const TEMPLATES = {
+    askem: {
+      background: "#0f1620", color: "#e8eef7", accent: "#4ec9ff",
+      h2: "#ffd166", h3: "#a5d8a7", muted: "#7a8a9f", note: "#b8c8de",
+      logo: "templates/askem/logo.png",
+      motion: "mesh",
+      fontSize: "32", titleSize: "76", padding: "96",
+    },
+  };
 
   let deckBase = "";
   let slidesCount = 0;
@@ -310,10 +417,30 @@
   }
 
   function applyMeta(meta) {
+    // Fusion template : valeurs explicites de meta gardent la priorité.
+    if (meta.template && TEMPLATES[meta.template]) {
+      const tpl = TEMPLATES[meta.template];
+      for (const k of Object.keys(tpl)) {
+        if (meta[k] == null) meta[k] = tpl[k];
+      }
+    }
     const body = document.body;
     body.className = "";
     body.classList.add("theme-" + (THEMES.has(meta.theme) ? meta.theme : "dark"));
     body.classList.add("t-" + (TRANS.has(meta.transition) ? meta.transition : "fade"));
+    body.classList.add("motion-" + (MOTION.has(meta.motion) ? meta.motion : "static"));
+    if (meta.animate !== "none") body.classList.add("animate-stagger");
+    if (meta.kenburns !== "false" && meta.kenburns !== false) body.classList.add("kenburns-on");
+    // logo : enlève l'ancien puis ajoute le nouveau si présent
+    const old = document.querySelector(".deck-logo");
+    if (old) old.remove();
+    if (meta.logo) {
+      const img = document.createElement("img");
+      img.className = "deck-logo";
+      img.src = resolveSrc(meta.logo);
+      img.onerror = () => img.remove();
+      document.body.appendChild(img);
+    }
     const root = document.documentElement.style;
     const set = (k, v, unit = "") => v != null && v !== "" && root.setProperty(k, v + unit);
     set("--bg", meta.background);

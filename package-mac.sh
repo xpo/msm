@@ -18,7 +18,7 @@ echo "▸ 1/6 construction du .love..."
 rm -f "$APP_NAME.love"
 # On inclut main.lua, parser.lua, exporter.lua, conf.lua ET msm.html
 # (msm.html est nécessaire pour la fonction d'export depuis l'app).
-zip -q -X "$APP_NAME.love" main.lua parser.lua exporter.lua inline.lua conf.lua msm.html
+zip -q -X -r "$APP_NAME.love" main.lua parser.lua exporter.lua inline.lua conf.lua msm.html templates
 
 echo "▸ 2/6 copie du bundle love.app..."
 rm -rf "$APP_NAME.app"

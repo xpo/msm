@@ -31,6 +31,142 @@ local watch_mtime = nil
 local watch_timer = 0
 local WATCH_INTERVAL = 0.6
 
+-- motion : background animé, stagger d'entrée, ken burns sur images
+local slide_arrived_t = 0
+local bg_shader = nil
+local particles = {}
+local logo_image = nil
+
+local SHADER_MESH = [[
+extern number time;
+extern vec2 resolution;
+extern vec3 c1; extern vec3 c2; extern vec3 c3; extern vec3 bg;
+vec4 effect(vec4 col, Image tex, vec2 tc, vec2 sc) {
+  vec2 uv = sc / resolution;
+  vec2 b1 = vec2(0.5 + 0.25*sin(time*0.07), 0.4 + 0.18*cos(time*0.05));
+  vec2 b2 = vec2(0.3 + 0.20*cos(time*0.06), 0.7 + 0.22*sin(time*0.04));
+  vec2 b3 = vec2(0.8 + 0.15*sin(time*0.05), 0.3 + 0.20*cos(time*0.08));
+  float d1 = exp(-2.8*length(uv-b1));
+  float d2 = exp(-3.0*length(uv-b2));
+  float d3 = exp(-3.2*length(uv-b3));
+  float total = d1+d2+d3+0.001;
+  vec3 blob = (c1*d1 + c2*d2 + c3*d3) / total;
+  return vec4(mix(bg, blob, 0.22), 1.0);
+}
+]]
+
+local SHADER_AURORA = [[
+extern number time;
+extern vec2 resolution;
+extern vec3 c1; extern vec3 c2; extern vec3 c3; extern vec3 bg;
+vec4 effect(vec4 col, Image tex, vec2 tc, vec2 sc) {
+  vec2 uv = sc / resolution;
+  float w1 = sin(uv.x * 5.0 + time * 0.4) * 0.5 + 0.5;
+  float w2 = sin(uv.x * 3.0 - time * 0.25 + uv.y * 2.0) * 0.5 + 0.5;
+  vec3 a = mix(c1, c2, w1);
+  a = mix(a, c3, w2 * (1.0 - smoothstep(0.3, 0.85, uv.y)));
+  return vec4(mix(bg, a, 0.17), 1.0);
+}
+]]
+
+local SHADER_GRAIN = [[
+extern number time;
+extern vec2 resolution;
+extern vec3 bg;
+vec4 effect(vec4 col, Image tex, vec2 tc, vec2 sc) {
+  vec2 seed = sc + vec2(time * 13.0, time * 17.0);
+  float n = fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453);
+  return vec4(bg + (n - 0.5) * 0.045, 1.0);
+}
+]]
+
+local BG_SHADERS = { mesh = SHADER_MESH, aurora = SHADER_AURORA, grain = SHADER_GRAIN }
+
+local function init_particles(W, H)
+  particles = {}
+  local n = 80
+  for _ = 1, n do
+    particles[#particles + 1] = {
+      x = math.random() * W,
+      y = math.random() * H,
+      phase = math.random() * math.pi * 2,
+      r = 1 + math.random() * 1.5,
+    }
+  end
+end
+
+local function draw_particles(W, H, t)
+  for _, p in ipairs(particles) do
+    local x = (p.x + math.sin(t * 0.08 + p.phase) * 30) % W
+    local y = (p.y + math.cos(t * 0.06 + p.phase) * 20) % H
+    love.graphics.circle("fill", x, y, p.r)
+  end
+end
+
+local function setup_motion(motion_name, W, H)
+  bg_shader = nil
+  if BG_SHADERS[motion_name] then
+    local ok, sh = pcall(love.graphics.newShader, BG_SHADERS[motion_name])
+    if ok then bg_shader = sh end
+  end
+  if motion_name == "particles" then
+    init_particles(W or love.graphics.getWidth(), H or love.graphics.getHeight())
+  end
+end
+
+local function draw_background()
+  local W, H = love.graphics.getDimensions()
+  love.graphics.clear(theme.background)
+  if theme.motion == "particles" then
+    love.graphics.setColor(theme.color[1], theme.color[2], theme.color[3], 0.08)
+    draw_particles(W, H, love.timer.getTime())
+    love.graphics.setColor(1, 1, 1, 1)
+    return
+  end
+  if not bg_shader then return end
+  bg_shader:send("time", love.timer.getTime())
+  bg_shader:send("resolution", { W, H })
+  if bg_shader:hasUniform("c1") then bg_shader:send("c1", { theme.accent[1], theme.accent[2], theme.accent[3] }) end
+  if bg_shader:hasUniform("c2") then bg_shader:send("c2", { theme.h2[1], theme.h2[2], theme.h2[3] }) end
+  if bg_shader:hasUniform("c3") then bg_shader:send("c3", { theme.h3[1], theme.h3[2], theme.h3[3] }) end
+  if bg_shader:hasUniform("bg") then bg_shader:send("bg", { theme.background[1], theme.background[2], theme.background[3] }) end
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.setShader(bg_shader)
+  love.graphics.rectangle("fill", 0, 0, W, H)
+  love.graphics.setShader()
+end
+
+local function stagger_alpha_yoff(item_index, on_current)
+  if theme.animate ~= "stagger" or not on_current then return 1, 0 end
+  local elapsed = love.timer.getTime() - slide_arrived_t
+  local delay = (item_index - 1) * 0.06
+  local p = math.max(0, math.min(1, (elapsed - delay) / 0.35))
+  return p, (1 - p) * 16
+end
+
+local function load_image_anywhere(path)
+  if love.filesystem.getInfo and love.filesystem.getInfo(path) then
+    local data = love.filesystem.read(path)
+    if data then
+      local fd = love.filesystem.newFileData(data, path)
+      local ok, imgdata = pcall(love.image.newImageData, fd)
+      if ok then return love.graphics.newImage(imgdata) end
+    end
+  end
+  return load_image(path)
+end
+
+local function load_template(name)
+  if not name or name == "" then return nil end
+  local path = "templates/" .. name .. "/template.lua"
+  if not (love.filesystem.getInfo and love.filesystem.getInfo(path)) then return nil end
+  local chunk = love.filesystem.load(path)
+  if not chunk then return nil end
+  local ok, tpl = pcall(chunk)
+  if ok and type(tpl) == "table" then return tpl end
+  return nil
+end
+
 -- editor state
 local edit_mode = false
 local edit_text = ""
@@ -239,6 +375,16 @@ local function lfs(path, size)
 end
 
 local function apply_theme()
+  -- Templates : si meta.template est posé, charger ses defaults dans meta
+  -- (les valeurs explicites de meta gardent la priorité).
+  if meta.template then
+    local tpl = load_template(meta.template)
+    if tpl then
+      for k, v in pairs(tpl) do
+        if meta[k] == nil then meta[k] = v end
+      end
+    end
+  end
   local base = THEMES[meta.theme or ""] or THEMES.dark
   theme.background = hex(meta.background, base.background)
   theme.color      = hex(meta.color,      base.color)
@@ -247,6 +393,11 @@ local function apply_theme()
   theme.h2         = hex(meta.h2,         base.h2)
   theme.h3         = hex(meta.h3,         base.h3)
   theme.note       = hex(meta.note,       base.note)
+  -- motion : background animé + stagger + ken burns
+  theme.motion     = meta.motion or "static"
+  theme.animate    = meta.animate or "stagger"
+  theme.kenburns   = (meta.kenburns ~= "false" and meta.kenburns ~= false)
+  theme.logo       = meta.logo
   theme.fontSize   = tonumber(meta.fontSize)   or 34
   theme.titleSize  = tonumber(meta.titleSize)  or 72
   theme.codeSize   = tonumber(meta.codeSize)   or 24
@@ -271,6 +422,9 @@ local function apply_theme()
   fonts.text_b  = family.b  and lfs(family.b,  theme.fontSize) or nil
   fonts.text_i  = family.i  and lfs(family.i,  theme.fontSize) or nil
   fonts.text_bi = family.bi and lfs(family.bi, theme.fontSize) or nil
+  -- Background animé + logo
+  setup_motion(theme.motion)
+  logo_image = theme.logo and load_image_anywhere(theme.logo) or nil
 end
 
 local function preload_images()
@@ -321,6 +475,7 @@ local function load_deck(path, preserve_position)
     current = 1
   end
   previous, trans_t = current, 1
+  slide_arrived_t = love.timer.getTime()
   -- baseline mtime du fichier juste chargé (pour ne pas retriger le watcher)
   watch_mtime = file_mtime(path)
   love.window.setTitle("mSM — " .. (path:match("([^/\\]+)$") or path))
@@ -525,32 +680,50 @@ local function draw_slide(idx, alpha, offX, offY)
   end
 
   local y = y_start
-  for _, it in ipairs(items) do
+  local on_current = (idx == current)
+  for ii, it in ipairs(items) do
     local el = it.el
-    if (el.type == "image" or el.type == "mermaid") and el.texture then
-      love.graphics.setColor(1, 1, 1, alpha)
-      love.graphics.draw(el.texture, (W - it.w) / 2, y, 0, it.scale, it.scale)
-    elseif el.type == "table" then
-      draw_table(it, pad, y, maxW, alpha)
-    elseif el.type == "space" then
-      -- nothing
-    elseif el.type == "code" then
-      love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], alpha * 0.12)
-      love.graphics.rectangle("fill", pad, y, maxW, it.h, 10, 10)
-      love.graphics.setColor(theme.color[1], theme.color[2], theme.color[3], alpha)
-      love.graphics.setFont(it.font)
-      love.graphics.printf(it.text, pad + 16, y + 12, maxW - 32, "left")
-    elseif el.type == "quote" then
-      love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], alpha * 0.6)
-      love.graphics.rectangle("fill", pad, y, 4, it.h)
-      inline.draw(it.layout, pad + 20, y, it.inner_w, theme.align, theme.muted, theme.accent, alpha)
-    else
-      local c = theme.color
-      if el.type == "h1" then c = theme.accent end
-      if el.type == "h2" then c = theme.h2 end
-      if el.type == "h3" then c = theme.h3 end
-      if el.type == "note" then c = theme.note end
-      inline.draw(it.layout, pad + (it.indent_px or 0), y, it.inner_w, theme.align, c, theme.accent, alpha)
+    local s_alpha, s_yoff = stagger_alpha_yoff(ii, on_current)
+    local a = alpha * s_alpha
+    local yy = y + s_yoff
+    if a > 0.001 then
+      if (el.type == "image" or el.type == "mermaid") and el.texture then
+        -- Ken Burns : zoom + drift léger autour du centre, désactivable
+        local kb_z, kb_dx, kb_dy = 1, 0, 0
+        if theme.kenburns and on_current then
+          local elapsed = love.timer.getTime() - slide_arrived_t
+          kb_z = 1 + math.min(0.06, elapsed * 0.005)
+          kb_dx = math.sin(elapsed * 0.08) * 5
+          kb_dy = math.cos(elapsed * 0.06) * 3
+        end
+        love.graphics.setColor(1, 1, 1, a)
+        love.graphics.draw(el.texture,
+          (W - it.w) / 2 + it.w / 2 + kb_dx,
+          yy + it.h / 2 + kb_dy,
+          0, it.scale * kb_z, it.scale * kb_z,
+          el.texture:getWidth() / 2, el.texture:getHeight() / 2)
+      elseif el.type == "table" then
+        draw_table(it, pad, yy, maxW, a)
+      elseif el.type == "space" then
+        -- nothing
+      elseif el.type == "code" then
+        love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], a * 0.12)
+        love.graphics.rectangle("fill", pad, yy, maxW, it.h, 10, 10)
+        love.graphics.setColor(theme.color[1], theme.color[2], theme.color[3], a)
+        love.graphics.setFont(it.font)
+        love.graphics.printf(it.text, pad + 16, yy + 12, maxW - 32, "left")
+      elseif el.type == "quote" then
+        love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], a * 0.6)
+        love.graphics.rectangle("fill", pad, yy, 4, it.h)
+        inline.draw(it.layout, pad + 20, yy, it.inner_w, theme.align, theme.muted, theme.accent, a)
+      else
+        local c = theme.color
+        if el.type == "h1" then c = theme.accent end
+        if el.type == "h2" then c = theme.h2 end
+        if el.type == "h3" then c = theme.h3 end
+        if el.type == "note" then c = theme.note end
+        inline.draw(it.layout, pad + (it.indent_px or 0), yy, it.inner_w, theme.align, c, theme.accent, a)
+      end
     end
     y = y + it.h + theme.lineSpace
   end
@@ -930,7 +1103,7 @@ end
 local function ease(t) return t < 0.5 and 2 * t * t or 1 - ((-2 * t + 2) ^ 2) / 2 end
 
 function love.draw()
-  love.graphics.clear(theme.background)
+  draw_background()
   if #slides == 0 then return end
 
   if edit_mode then
@@ -969,6 +1142,18 @@ function love.draw()
     draw_slide(current, 1, 0, 0)
   end
 
+  -- Logo overlay (bas-droite, opacity légère)
+  if logo_image then
+    local iw, ih = logo_image:getDimensions()
+    local target_h = 56
+    local s = target_h / ih
+    love.graphics.setColor(1, 1, 1, 0.7)
+    love.graphics.draw(logo_image,
+      love.graphics.getWidth() - iw * s - 24,
+      love.graphics.getHeight() - ih * s - 24,
+      0, s, s)
+  end
+
   if theme.showIndex then
     love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.7)
     love.graphics.setFont(fonts.small)
@@ -995,6 +1180,7 @@ local function go_to(n)
     previous = current
     current = n
     trans_t = 0
+    slide_arrived_t = love.timer.getTime()
   end
 end
 
