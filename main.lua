@@ -37,6 +37,11 @@ local bg_shader = nil
 local particles = {}
 local logo_image = nil
 
+-- présentation : timer global + mode mosaïque (vue d'ensemble)
+local presentation_start_t = 0
+local overview_mode = false
+local PRESENTER_BAR_H = 32
+
 local SHADER_MESH = [[
 extern number time;
 extern vec2 resolution;
@@ -817,6 +822,7 @@ end
 
 function love.load(args)
   bootstrap_user_dir()
+  presentation_start_t = love.timer.getTime()
   local path = args and args[1]
   if path then
     load_deck(path)
@@ -1042,6 +1048,116 @@ local function caret_move_vert(text, cursor, dir)
   end
 end
 
+local function format_elapsed(t)
+  local m = math.floor(t / 60)
+  local s = math.floor(t % 60)
+  return string.format("%02d:%02d", m, s)
+end
+
+local function draw_presenter_bar()
+  if #slides == 0 then return end
+  local W, H = love.graphics.getDimensions()
+  local bar_y = H - PRESENTER_BAR_H
+
+  -- fond très discret
+  love.graphics.setColor(0, 0, 0, 0.28)
+  love.graphics.rectangle("fill", 0, bar_y, W, PRESENTER_BAR_H)
+
+  love.graphics.setFont(fonts.small)
+  local fh = fonts.small:getHeight()
+  local y = bar_y + (PRESENTER_BAR_H - fh) / 2
+  local pad = 24
+  love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.85)
+
+  -- gauche : timer + horloge
+  local elapsed = love.timer.getTime() - presentation_start_t
+  local left = format_elapsed(elapsed) .. "  ·  " .. os.date("%H:%M")
+  love.graphics.print(left, pad, y)
+
+  -- centre : indication mode
+  local hint = overview_mode and "Esc / O : retour" or "O : vue d'ensemble"
+  love.graphics.printf(hint, 0, y, W, "center")
+
+  -- droite : slide N/total (caché en overview)
+  if not overview_mode then
+    love.graphics.printf(current .. " / " .. #slides, 0, y, W - pad, "right")
+  end
+end
+
+local function draw_overview()
+  local W, H = love.graphics.getDimensions()
+  local n = #slides
+  if n == 0 then return end
+  -- grille aspect-ratio aware
+  local cols = math.max(1, math.min(n, math.ceil(math.sqrt(n * (W / math.max(1, H))))))
+  local rows = math.ceil(n / cols)
+  local usable_h = H - PRESENTER_BAR_H
+  local cell_w = W / cols
+  local cell_h = usable_h / rows
+  local thumb_pad = 10
+
+  for i = 1, n do
+    local col = (i - 1) % cols
+    local row = math.floor((i - 1) / cols)
+    local cx = col * cell_w
+    local cy = row * cell_h
+
+    local inner_w = cell_w - thumb_pad * 2
+    local inner_h = cell_h - thumb_pad * 2
+    local s = math.min(inner_w / W, inner_h / H)
+    local draw_w = W * s
+    local draw_h = H * s
+    local offset_x = (inner_w - draw_w) / 2
+    local offset_y = (inner_h - draw_h) / 2
+
+    love.graphics.setScissor(cx + thumb_pad, cy + thumb_pad, inner_w, inner_h)
+
+    -- fond de la vignette (couleur du thème)
+    love.graphics.setColor(theme.background[1], theme.background[2], theme.background[3], 1)
+    love.graphics.rectangle("fill", cx + thumb_pad, cy + thumb_pad, inner_w, inner_h, 4, 4)
+
+    love.graphics.push()
+    love.graphics.translate(cx + thumb_pad + offset_x, cy + thumb_pad + offset_y)
+    love.graphics.scale(s)
+    draw_slide(i, 1, 0, 0)
+    love.graphics.pop()
+
+    love.graphics.setScissor()
+
+    -- bordure : accent pour current, muted sinon
+    if i == current then
+      love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.95)
+      love.graphics.setLineWidth(3)
+    else
+      love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.25)
+      love.graphics.setLineWidth(1)
+    end
+    love.graphics.rectangle("line", cx + thumb_pad, cy + thumb_pad, inner_w, inner_h, 4, 4)
+
+    -- numéro de slide en bas-gauche de la vignette
+    love.graphics.setFont(fonts.small)
+    love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.8)
+    love.graphics.print(tostring(i),
+      cx + thumb_pad + 8, cy + thumb_pad + inner_h - fonts.small:getHeight() - 6)
+  end
+end
+
+local function overview_hit_test(mx, my)
+  local n = #slides
+  if n == 0 then return nil end
+  local W, H = love.graphics.getDimensions()
+  local cols = math.max(1, math.min(n, math.ceil(math.sqrt(n * (W / math.max(1, H))))))
+  local usable_h = H - PRESENTER_BAR_H
+  local cell_w = W / cols
+  local cell_h = usable_h / math.ceil(n / cols)
+  if my > usable_h then return nil end
+  local col = math.floor(mx / cell_w)
+  local row = math.floor(my / cell_h)
+  local idx = row * cols + col + 1
+  if idx >= 1 and idx <= n then return idx end
+  return nil
+end
+
 local function draw_editor()
   local W, H = love.graphics.getDimensions()
   local pad = theme.padding
@@ -1175,6 +1291,12 @@ function love.draw()
   draw_background()
   if #slides == 0 then return end
 
+  if overview_mode then
+    draw_overview()
+    draw_presenter_bar()
+    return
+  end
+
   if edit_mode then
     draw_editor()
     if flash_t > 0 and flash_msg then
@@ -1211,7 +1333,7 @@ function love.draw()
     draw_slide(current, 1, 0, 0)
   end
 
-  -- Logo overlay (bas-droite, opacity légère)
+  -- Logo overlay : bas-droite, au-dessus de la barre présentateur
   if logo_image then
     local iw, ih = logo_image:getDimensions()
     local target_h = 56
@@ -1219,16 +1341,12 @@ function love.draw()
     love.graphics.setColor(1, 1, 1, 0.7)
     love.graphics.draw(logo_image,
       love.graphics.getWidth() - iw * s - 24,
-      love.graphics.getHeight() - ih * s - 24,
+      love.graphics.getHeight() - ih * s - PRESENTER_BAR_H - 16,
       0, s, s)
   end
 
-  if theme.showIndex then
-    love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.7)
-    love.graphics.setFont(fonts.small)
-    love.graphics.printf(current .. " / " .. #slides,
-      0, love.graphics.getHeight() - 28, love.graphics.getWidth() - 20, "right")
-  end
+  -- Barre présentateur (timer, horloge, slide N/total)
+  draw_presenter_bar()
 
   if flash_t > 0 and flash_msg then
     local alpha = math.min(1, flash_t * 1.2)
@@ -1356,8 +1474,20 @@ function love.keypressed(key)
     return
   end
 
+  if overview_mode then
+    if key == "escape" or key == "o" then overview_mode = false; return end
+    if key == "return" or key == "space" then overview_mode = false; return end
+    if key == "right" or key == "down" then go_to(current + 1); return end
+    if key == "left" or key == "up" then go_to(current - 1); return end
+    if key == "home" then go_to(1); return end
+    if key == "end" then go_to(#slides); return end
+    return
+  end
+
   if key == "escape" or key == "q" then
     love.event.quit()
+  elseif key == "o" then
+    overview_mode = true
   elseif key == "right" or key == "space" or key == "pagedown" or key == "return" or key == "down" then
     go_to(current + 1)
   elseif key == "left" or key == "pageup" or key == "backspace" or key == "up" then
@@ -1395,6 +1525,18 @@ function love.filedropped(file)
 end
 
 function love.mousepressed(x, y, button)
+  if overview_mode then
+    if button == 1 then
+      local idx = overview_hit_test(x, y)
+      if idx then
+        overview_mode = false
+        go_to(idx)
+      end
+    elseif button == 2 then
+      overview_mode = false
+    end
+    return
+  end
   if edit_mode then
     if button ~= 1 then return end
     local pos = mouse_to_caret(x, y)
