@@ -81,6 +81,7 @@ vec4 effect(vec4 col, Image tex, vec2 tc, vec2 sc) {
 ]]
 
 local BG_SHADERS = { mesh = SHADER_MESH, aurora = SHADER_AURORA, grain = SHADER_GRAIN }
+local compiled_shaders = {}
 
 local function init_particles(W, H)
   particles = {}
@@ -103,35 +104,46 @@ local function draw_particles(W, H, t)
   end
 end
 
-local function setup_motion(motion_name, W, H)
-  bg_shader = nil
-  if BG_SHADERS[motion_name] then
-    local ok, sh = pcall(love.graphics.newShader, BG_SHADERS[motion_name])
-    if ok then bg_shader = sh end
+local function setup_motion(_, W, H)
+  -- compile tous les shaders une fois pour permettre le switch par slide
+  for name, src in pairs(BG_SHADERS) do
+    if not compiled_shaders[name] then
+      local ok, sh = pcall(love.graphics.newShader, src)
+      if ok then compiled_shaders[name] = sh end
+    end
   end
-  if motion_name == "particles" then
-    init_particles(W or love.graphics.getWidth(), H or love.graphics.getHeight())
+  init_particles(W or love.graphics.getWidth(), H or love.graphics.getHeight())
+end
+
+local function current_motion()
+  -- override slide-level via `<!-- motion: aurora -->`, sinon défaut deck
+  local slide = slides[current]
+  if slide and slide.meta and slide.meta.motion then
+    return slide.meta.motion
   end
+  return theme.motion or "static"
 end
 
 local function draw_background()
   local W, H = love.graphics.getDimensions()
   love.graphics.clear(theme.background)
-  if theme.motion == "particles" then
+  local m = current_motion()
+  if m == "particles" then
     love.graphics.setColor(theme.color[1], theme.color[2], theme.color[3], 0.08)
     draw_particles(W, H, love.timer.getTime())
     love.graphics.setColor(1, 1, 1, 1)
     return
   end
-  if not bg_shader then return end
-  bg_shader:send("time", love.timer.getTime())
-  bg_shader:send("resolution", { W, H })
-  if bg_shader:hasUniform("c1") then bg_shader:send("c1", { theme.accent[1], theme.accent[2], theme.accent[3] }) end
-  if bg_shader:hasUniform("c2") then bg_shader:send("c2", { theme.h2[1], theme.h2[2], theme.h2[3] }) end
-  if bg_shader:hasUniform("c3") then bg_shader:send("c3", { theme.h3[1], theme.h3[2], theme.h3[3] }) end
-  if bg_shader:hasUniform("bg") then bg_shader:send("bg", { theme.background[1], theme.background[2], theme.background[3] }) end
+  local sh = compiled_shaders[m]
+  if not sh then return end
+  sh:send("time", love.timer.getTime())
+  sh:send("resolution", { W, H })
+  if sh:hasUniform("c1") then sh:send("c1", { theme.accent[1], theme.accent[2], theme.accent[3] }) end
+  if sh:hasUniform("c2") then sh:send("c2", { theme.h2[1], theme.h2[2], theme.h2[3] }) end
+  if sh:hasUniform("c3") then sh:send("c3", { theme.h3[1], theme.h3[2], theme.h3[3] }) end
+  if sh:hasUniform("bg") then sh:send("bg", { theme.background[1], theme.background[2], theme.background[3] }) end
   love.graphics.setColor(1, 1, 1, 1)
-  love.graphics.setShader(bg_shader)
+  love.graphics.setShader(sh)
   love.graphics.rectangle("fill", 0, 0, W, H)
   love.graphics.setShader()
 end

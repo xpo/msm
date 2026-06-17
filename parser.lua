@@ -66,6 +66,7 @@ end
 
 local function parse_slide(lines)
   local els = {}
+  local slide_meta = {}
   local code_buf, in_code, code_lang = nil, false, nil
   local table_buf = nil
 
@@ -86,7 +87,11 @@ local function parse_slide(lines)
   end
 
   for _, line in ipairs(lines) do
-    if line:match("^```") then
+    -- Override slide-level via commentaire HTML : <!-- motion: aurora -->
+    local mk, mv = line:match("^%s*<!%-%-%s*([%w_%-]+)%s*:%s*(.-)%s*%-%->%s*$")
+    if mk then
+      slide_meta[mk] = mv
+    elseif line:match("^```") then
       flush_table()
       if in_code then
         local t = (code_lang == "mermaid") and "mermaid" or "code"
@@ -128,6 +133,7 @@ local function parse_slide(lines)
   flush_table()
   while #els > 0 and els[1].type == "space" do table.remove(els, 1) end
   while #els > 0 and els[#els].type == "space" do table.remove(els) end
+  els.meta = slide_meta
   return els
 end
 

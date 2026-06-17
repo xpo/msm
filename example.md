@@ -231,6 +231,71 @@ Web : rendu live via Mermaid.js (CDN). Desktop : pré-rendu PNG via `mmdc` (cach
 
 ---
 
+<!-- motion: static -->
+## Fonds animés
+
+mSM ajoute des fonds très subtils, désactivables, configurables par slide via `<!-- motion: nom -->`.
+
+Les cinq prochaines slides démontrent chaque effet.
+
+-> Cette slide-ci est en `static` (aucune animation).
+
+---
+
+<!-- motion: mesh -->
+## Mesh gradients drifting
+
+Trois "blobs" colorés qui se déplacent très lentement, blend doux sur le fond. Style **Stripe / Pitch / Tome**.
+
+Bon pour : la majorité des decks corporate. Donne du mouvement sans distraire du contenu.
+
+-> Active : `motion: mesh` dans le frontmatter, ou `<!-- motion: mesh -->` par slide.
+
+---
+
+<!-- motion: aurora -->
+## Aurora
+
+Bandes de couleur ondulantes, comme des aurores boréales, à mi-chemin entre `mesh` et un gradient classique.
+
+Bon pour : les decks tech, fond plus saturé en couleurs sans être bruyant.
+
+-> Active : `motion: aurora` ou `<!-- motion: aurora -->`.
+
+---
+
+<!-- motion: grain -->
+## Film grain subtil
+
+Bruit léger sur tout le fond, donne une texture organique, façon **WWDC** ou sites premium.
+
+Bon pour : poser une identité "premium", se marie bien avec du contenu sobre.
+
+-> Active : `motion: grain` ou `<!-- motion: grain -->`.
+
+---
+
+<!-- motion: particles -->
+## Particules sparse
+
+Quatre-vingts petits points qui dérivent doucement avec un mouvement sinusoïdal. Style **Slidev / fonds tech minimal**.
+
+Bon pour : tech, data, mise en avant d'une idée fluide.
+
+-> Active : `motion: particles` ou `<!-- motion: particles -->`.
+
+---
+
+## Magic Move (idée, pas implémenté)
+
+À la **Keynote / Slidev**, un même élément se "morphe" entre deux slides : la même image bouge, le même titre change de taille, etc. Effet très impressionnant pour des comparaisons avant/après ou des séquences.
+
+Non implémenté dans mSM v0.7. Demanderait un système d'IDs (`{#step1}`) côté `.md` pour relier les éléments entre slides, et de la math d'interpolation pendant la transition.
+
+-> À mettre dans le backlog si l'usage justifie l'investissement.
+
+---
+
 ## Raccourcis
 
 - **→ / Espace / Clic gauche** : slide suivante

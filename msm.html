@@ -302,6 +302,7 @@
 
   function parseSlide(lines) {
     const els = [];
+    const slideMeta = {};
     let inCode = false, codeBuf = null, codeLang = null, tableBuf = null;
     const flushTable = () => {
       if (!tableBuf || !tableBuf.length) return;
@@ -316,6 +317,8 @@
       tableBuf = null;
     };
     for (const line of lines) {
+      const mtag = line.match(/^\s*<!--\s*([\w_-]+)\s*:\s*(.+?)\s*-->\s*$/);
+      if (mtag) { slideMeta[mtag[1]] = mtag[2]; continue; }
       if (/^```/.test(line)) {
         flushTable();
         if (inCode) {
@@ -345,6 +348,7 @@
     flushTable();
     while (els[0] && els[0].type === "space") els.shift();
     while (els.length && els[els.length - 1].type === "space") els.pop();
+    els.meta = slideMeta;
     return els;
   }
 
@@ -407,12 +411,19 @@
     return deckBase + src;
   }
 
+  let deckMotion = "static";
+  function applyBodyMotion(m) {
+    const body = document.body;
+    body.classList.remove("motion-static","motion-mesh","motion-aurora","motion-grain","motion-particles");
+    body.classList.add("motion-" + (MOTION.has(m) ? m : "static"));
+  }
   function applyMeta(meta) {
     const body = document.body;
     body.className = "";
     body.classList.add("theme-" + (THEMES.has(meta.theme) ? meta.theme : "dark"));
     body.classList.add("t-" + (TRANS.has(meta.transition) ? meta.transition : "fade"));
-    body.classList.add("motion-" + (MOTION.has(meta.motion) ? meta.motion : "static"));
+    deckMotion = MOTION.has(meta.motion) ? meta.motion : "static";
+    applyBodyMotion(deckMotion);
     if (meta.animate !== "none") body.classList.add("animate-stagger");
     if (meta.kenburns !== "false" && meta.kenburns !== false) body.classList.add("kenburns-on");
     // logo : enlève l'ancien puis ajoute le nouveau si présent
@@ -448,6 +459,7 @@
   function renderSlide(slide) {
     const sec = document.createElement("section");
     sec.className = "slide";
+    if (slide.meta && slide.meta.motion) sec.dataset.motion = slide.meta.motion;
     const content = document.createElement("div");
     content.className = "content";
     let curList = null;
@@ -585,6 +597,8 @@
       else if (i < n) s.classList.add("past");
     });
     document.getElementById("idx").textContent = (n + 1) + " / " + slidesCount;
+    // motion par slide : override via data-motion sinon retombe au deck-level
+    applyBodyMotion(sects[n].dataset.motion || deckMotion);
     requestAnimationFrame(() => applyOverflow(sects[n]));
   }
 
@@ -612,7 +626,9 @@
         if (i === 0) s.classList.add("current");
       });
       document.getElementById("idx").textContent = "1 / " + slidesCount;
-      requestAnimationFrame(() => applyOverflow(document.querySelector(".slide.current")));
+      const first = document.querySelector(".slide.current");
+      if (first) applyBodyMotion(first.dataset.motion || deckMotion);
+      requestAnimationFrame(() => applyOverflow(first));
     } catch (e) {
       showWelcome("Erreur de parsing : " + e.message);
     }
