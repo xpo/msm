@@ -170,6 +170,7 @@ Un preset définit six couleurs (`background`, `color`, `accent`, `h2`, `h3`, `m
 | `` ```…``` ``     | Bloc de code monospace                                 |
 | `![alt](path)`    | Image centrée, adaptée à la taille de la slide         |
 | `\| a \| b \|`    | Table (header, séparateur, lignes)                     |
+| ` ```mermaid ` … | Diagramme Mermaid (flowchart, sequence, gantt, etc.)    |
 | `**gras**`        | Gras                                                   |
 | `*italique*`      | Italique                                               |
 | `` `code` ``      | Code inline (fond teinté)                              |
@@ -203,6 +204,31 @@ Quand une slide est plus haute que l'espace disponible, `overflow` choisit la st
 - **`clip`** : garde la taille, coupe ce qui dépasse au bas du cadre.
 
 `minScale` (défaut `0.45`) est le plancher en mode `shrink`. Si le contenu est tellement grand qu'il faudrait descendre en dessous, mSM s'arrête à `minScale` et clippe le reste — pour éviter le texte illisible.
+
+### Diagrammes Mermaid
+
+Tu peux écrire des blocs ` ```mermaid … ``` ` n'importe où dans un deck :
+
+```markdown
+\`\`\`mermaid
+flowchart LR
+  A --> B
+\`\`\`
+```
+
+**Rendu par player** :
+
+- **Web (`msm.html`)** : Mermaid.js est chargé depuis le CDN jsdelivr et `mermaid.run()` est appelé après le render des slides. Theme adapté automatiquement (dark/slate → `dark`, light/cream/solar → `default`).
+- **Desktop (LÖVE)** : pré-rendu PNG via le CLI `mmdc` ([mermaid-cli](https://github.com/mermaid-js/mermaid-cli)). Cache dans `<dossier-du-deck>/.msm-mermaid/<hash>.png`. Si `mmdc` est introuvable, fallback en bloc code.
+- **HTML autonome (`build.lua`)** : le markdown est embarqué tel quel, le rendu Mermaid se fait à l'ouverture via le CDN (donc internet requis à la visualisation).
+
+**Installer `mmdc`** (pour le runtime desktop) :
+
+```bash
+npm install -g @mermaid-js/mermaid-cli
+```
+
+Le cache `.msm-mermaid/` peut être versionné avec ton deck pour que d'autres machines (sans `mmdc`) puissent l'afficher sans re-rendre.
 
 ### Glyphes manquants
 

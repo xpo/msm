@@ -213,6 +213,21 @@ Exemple : cette slide est volontairement longue pour tester.
 
 
 
+## Diagrammes Mermaid
+
+```mermaid
+flowchart LR
+  A[.md] --> B(parser)
+  B --> C{runtime}
+  C -->|desktop| D[LÖVE]
+  C -->|web| E[msm.html]
+  C -->|export| F[deck.html autonome]
+```
+
+Web : rendu live via Mermaid.js (CDN). Desktop : pré-rendu PNG via `mmdc` (cache dans `.msm-mermaid/`).
+
+---
+
 ## Raccourcis
 
 - **→ / Espace / Clic gauche** : slide suivante

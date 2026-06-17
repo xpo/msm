@@ -101,9 +101,65 @@ local function read_bytes(path)
   return data
 end
 
+local function path_exists(p)
+  if not p or p == "" then return false end
+  local f = io.open(p, "rb")
+  if f then f:close(); return true end
+  return false
+end
+
 local function resolve(path)
   if path:match("^/") or path:match("^%a:[/\\]") then return path end
   return deck_dir .. path
+end
+
+-- ---------- Mermaid ----------
+-- Pré-rendu des blocs ```mermaid en PNG via mmdc. Cache local par hash.
+-- Fallback gracieux en bloc code si mmdc absent ou échec.
+local function find_mmdc()
+  if path_exists("/opt/homebrew/bin/mmdc") then return "/opt/homebrew/bin/mmdc" end
+  if path_exists("/usr/local/bin/mmdc") then return "/usr/local/bin/mmdc" end
+  local h = io.popen("which mmdc 2>/dev/null")
+  if h then
+    local p = (h:read("*a") or ""):gsub("[\n\r%s]", "")
+    h:close()
+    if p ~= "" then return p end
+  end
+  return nil
+end
+
+local function md5_string(s)
+  local tmp = os.tmpname()
+  local f = io.open(tmp, "w"); if not f then return nil end
+  f:write(s); f:close()
+  local h = io.popen("md5 -q '" .. tmp .. "' 2>/dev/null")
+  if not h then os.remove(tmp); return nil end
+  local res = (h:read("*a") or ""):gsub("[\n\r%s]", "")
+  h:close(); os.remove(tmp)
+  if res == "" then return nil end
+  return res:sub(1, 16)
+end
+
+local function ensure_mermaid_png(src, out_path)
+  if path_exists(out_path) then return true end
+  local mmdc = find_mmdc()
+  if not mmdc then io.stderr:write("mSM mermaid: mmdc introuvable\n") return false end
+  local tmp_in = os.tmpname() .. ".mmd"
+  local f = io.open(tmp_in, "w"); if not f then return false end
+  f:write(src); f:close()
+  local cmd = string.format(
+    "%q -i %q -o %q -b transparent -w 1600 2>&1",
+    mmdc, tmp_in, out_path
+  )
+  local h = io.popen(cmd)
+  local out = h and h:read("*a") or ""
+  if h then h:close() end
+  os.remove(tmp_in)
+  local ok = path_exists(out_path)
+  if not ok then
+    io.stderr:write("mSM mermaid: echec rendu (" .. out .. ")\n")
+  end
+  return ok
 end
 
 local function load_image(src)
@@ -122,13 +178,6 @@ local function load_font(path, size)
   if not data then return love.graphics.newFont(size) end
   local fd = love.filesystem.newFileData(data, "deckfont")
   return love.graphics.newFont(fd, size)
-end
-
-local function path_exists(p)
-  if not p or p == "" then return false end
-  local f = io.open(p, "rb")
-  if f then f:close(); return true end
-  return false
 end
 
 -- Polices système avec variantes Bold/Italic/BoldItalic, pour un vrai contraste
@@ -212,10 +261,28 @@ local function apply_theme()
 end
 
 local function preload_images()
-  for _, slide in ipairs(slides) do
+  local cache_dir = deck_dir .. ".msm-mermaid"
+  local cache_created = false
+  for si, slide in ipairs(slides) do
     for _, el in ipairs(slide) do
       if el.type == "image" then
         el.texture = load_image(el.src)
+      elseif el.type == "mermaid" then
+        local hash = md5_string(el.text)
+        if hash then
+          if not cache_created then
+            os.execute("mkdir -p '" .. cache_dir:gsub("'", "'\\''") .. "'")
+            cache_created = true
+          end
+          local png = cache_dir .. "/" .. hash .. ".png"
+          if ensure_mermaid_png(el.text, png) then
+            el.texture = load_image(png)
+          end
+        end
+        if not el.texture then
+          -- fallback : afficher comme bloc code
+          el.type = "code"
+        end
       end
     end
   end
@@ -307,7 +374,7 @@ local function layout_slide(slide, maxW, maxH)
   local space = theme.lineSpace
   for _, el in ipairs(slide) do
     local item = { el = el }
-    if el.type == "image" and el.texture then
+    if (el.type == "image" or el.type == "mermaid") and el.texture then
       local iw, ih = el.texture:getDimensions()
       local s = math.min(maxW / iw, (maxH * 0.75) / ih, 1)
       item.w, item.h, item.scale = iw * s, ih * s, s
@@ -447,7 +514,7 @@ local function draw_slide(idx, alpha, offX, offY)
   local y = y_start
   for _, it in ipairs(items) do
     local el = it.el
-    if el.type == "image" and el.texture then
+    if (el.type == "image" or el.type == "mermaid") and el.texture then
       love.graphics.setColor(1, 1, 1, alpha)
       love.graphics.draw(el.texture, (W - it.w) / 2, y, 0, it.scale, it.scale)
     elseif el.type == "table" then

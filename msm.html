@@ -100,6 +100,8 @@
       font-size: 0.88em;
     }
     pre code { background: transparent; color: inherit; padding: 0; font-size: inherit; border-radius: 0; }
+    .mermaid { display: block; margin: 0.5em auto; max-width: 100%; max-height: 70vh; overflow: hidden; text-align: center; }
+    .mermaid svg { max-width: 100%; max-height: 70vh; height: auto; }
     table { border-collapse: collapse; margin: 0.5em auto; font-size: var(--font-size); }
     table th, table td { padding: 0.5em 0.9em; }
     table th {
@@ -146,6 +148,15 @@
 </head>
 <body class="theme-dark t-fade">
   <script type="text/plain" id="deck-embed">__MSM_EMBED_PLACEHOLDER_53a8b__</script>
+  <script type="module">
+    // Mermaid : import depuis CDN. Si offline, les blocs mermaid restent en texte brut.
+    try {
+      const m = await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs");
+      window.__mermaid = m.default || m;
+    } catch (e) {
+      console.warn("Mermaid non charge :", e);
+    }
+  </script>
   <div class="deck" id="deck"></div>
   <div class="index" id="idx"></div>
   <div class="welcome" id="welcome">
@@ -197,7 +208,7 @@
 
   function parseSlide(lines) {
     const els = [];
-    let inCode = false, codeBuf = null, tableBuf = null;
+    let inCode = false, codeBuf = null, codeLang = null, tableBuf = null;
     const flushTable = () => {
       if (!tableBuf || !tableBuf.length) return;
       const header = parsePipeRow(tableBuf[0]);
@@ -213,8 +224,14 @@
     for (const line of lines) {
       if (/^```/.test(line)) {
         flushTable();
-        if (inCode) { els.push({ type: "code", text: codeBuf.join("\n") }); codeBuf = null; inCode = false; }
-        else { codeBuf = []; inCode = true; }
+        if (inCode) {
+          const type = (codeLang === "mermaid") ? "mermaid" : "code";
+          els.push({ type, text: codeBuf.join("\n"), lang: codeLang });
+          codeBuf = null; inCode = false; codeLang = null;
+        } else {
+          codeBuf = []; inCode = true;
+          codeLang = (line.match(/^```\s*(\S*)/) || [])[1] || "";
+        }
       } else if (inCode) { codeBuf.push(line); }
       else if (isPipe(line)) { (tableBuf = tableBuf || []).push(line); }
       else {
@@ -350,6 +367,13 @@
           const pre = document.createElement("pre");
           pre.textContent = el.text; content.appendChild(pre); break;
         }
+        case "mermaid": {
+          const div = document.createElement("div");
+          div.className = "mermaid";
+          div.textContent = el.text;
+          content.appendChild(div);
+          break;
+        }
         case "image": {
           const img = document.createElement("img");
           img.src = resolveSrc(el.src); img.alt = el.alt || "";
@@ -398,6 +422,26 @@
     deck.innerHTML = "";
     slides.forEach(s => deck.appendChild(renderSlide(s)));
     slidesCount = slides.length;
+    runMermaid();
+  }
+
+  const MERMAID_THEME = { dark: "dark", slate: "dark", light: "default", cream: "neutral", solar: "default" };
+  async function runMermaid() {
+    const nodes = document.querySelectorAll(".mermaid");
+    if (!nodes.length) return;
+    // attend jusqu'a 5 s que le module CDN finisse de charger
+    for (let i = 0; i < 50 && !window.__mermaid; i++) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (!window.__mermaid) return;
+    const themeKey = [...document.body.classList].map(c => c.replace("theme-", ""))
+      .find(t => MERMAID_THEME[t]) || "dark";
+    try {
+      window.__mermaid.initialize({ startOnLoad: false, theme: MERMAID_THEME[themeKey] });
+      await window.__mermaid.run({ nodes });
+    } catch (e) {
+      console.warn("mermaid.run a echoue :", e);
+    }
   }
 
   function applyOverflow(slideEl) {

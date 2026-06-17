@@ -9,6 +9,9 @@ example-build.html
 # Decks privés (use cases)
 sl-*
 
+# Cache Mermaid (PNG pré-rendus par mmdc, régénérés à la demande)
+.msm-mermaid/
+
 # Tags Release (zips produits localement)
 *.app.zip
 release/

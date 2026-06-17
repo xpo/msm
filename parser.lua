@@ -66,7 +66,7 @@ end
 
 local function parse_slide(lines)
   local els = {}
-  local code_buf, in_code = nil, false
+  local code_buf, in_code, code_lang = nil, false, nil
   local table_buf = nil
 
   local function flush_table()
@@ -89,10 +89,12 @@ local function parse_slide(lines)
     if line:match("^```") then
       flush_table()
       if in_code then
-        table.insert(els, { type = "code", text = table.concat(code_buf, "\n") })
-        code_buf, in_code = nil, false
+        local t = (code_lang == "mermaid") and "mermaid" or "code"
+        table.insert(els, { type = t, text = table.concat(code_buf, "\n"), lang = code_lang })
+        code_buf, in_code, code_lang = nil, false, nil
       else
         code_buf, in_code = {}, true
+        code_lang = line:match("^```%s*(%S*)") or ""
       end
     elseif in_code then
       table.insert(code_buf, line)
