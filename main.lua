@@ -44,6 +44,9 @@ local help_mode = false
 local black_mode = false
 local white_mode = false
 local auto_active = false
+local laser_mode = false
+local laser_trail = {} -- file FIFO de {x, y, t}
+local LASER_TRAIL_DUR = 1.2
 local PRESENTER_BAR_H = 32
 local PROGRESS_BAR_H = 2
 
@@ -58,7 +61,8 @@ local HELP_SECTIONS = {
     { "F",   "plein écran" },
     { "B",   "écran noir (B ou Esc pour sortir)" },
     { "W",   "écran blanc (W ou Esc pour sortir)" },
-    { "?",   "cette aide (? ou Esc pour fermer)" },
+    { "L",   "laser pointeur (suivre la souris, traînée 1.2s)" },
+    { "H ou ?", "cette aide (Esc pour fermer)" },
   }},
   { title = "Auto-avance", items = {
     { "A",      "activer / désactiver l'auto-avance" },
@@ -874,6 +878,16 @@ function love.update(dt)
   end
   if flash_t > 0 then flash_t = flash_t - dt end
 
+  -- laser pointer : trail des positions souris
+  if laser_mode then
+    local mx, my = love.mouse.getPosition()
+    laser_trail[#laser_trail + 1] = { x = mx, y = my, t = love.timer.getTime() }
+    local now = love.timer.getTime()
+    while #laser_trail > 0 and now - laser_trail[1].t > LASER_TRAIL_DUR do
+      table.remove(laser_trail, 1)
+    end
+  end
+
   -- auto-avance : si actif et interval défini, avance après le délai
   if auto_active and #slides > 0
      and not edit_mode and not help_mode and not overview_mode
@@ -1142,7 +1156,7 @@ local function draw_presenter_bar()
       or theme.auto_default or 0
     hint = "AUTO " .. (interval > 0 and interval .. "s  " or "") .. "·  A : stop  ·  ? : aide"
   else
-    hint = "O : vue  ·  Cmd-E : édit  ·  B : noir  ·  W : blanc  ·  A : auto  ·  ? : aide"
+    hint = "O : vue  ·  L : laser  ·  B : noir  ·  W : blanc  ·  A : auto  ·  ? : aide"
   end
   love.graphics.printf(hint, 0, y, W, "center")
 
@@ -1525,6 +1539,22 @@ function love.draw()
 
   -- L'aide vient par-dessus tout (sauf black_mode déjà traité plus haut)
   if help_mode then draw_help_overlay() end
+
+  -- Laser pointer : trainée + halo au-dessus de tout
+  if laser_mode then
+    local now = love.timer.getTime()
+    for _, p in ipairs(laser_trail) do
+      local age = now - p.t
+      local a = math.max(0, 1 - age / LASER_TRAIL_DUR)
+      love.graphics.setColor(1, 0.15, 0.2, a * 0.5)
+      love.graphics.circle("fill", p.x, p.y, 6)
+    end
+    local mx, my = love.mouse.getPosition()
+    love.graphics.setColor(1, 1, 1, 0.4)
+    love.graphics.circle("fill", mx, my, 14)
+    love.graphics.setColor(1, 0.15, 0.2, 0.95)
+    love.graphics.circle("fill", mx, my, 8)
+  end
 end
 
 local function go_to(n)
@@ -1675,6 +1705,10 @@ function love.keypressed(key)
   elseif key == "a" then
     auto_active = not auto_active
     flash(auto_active and "Auto-avance ON" or "Auto-avance OFF", 1.4)
+  elseif key == "l" then
+    laser_mode = not laser_mode
+    laser_trail = {}
+    love.mouse.setVisible(not laser_mode)
   elseif key == "h" or key == "/" or key == "?" then
     help_mode = true
   elseif key == "right" or key == "space" or key == "pagedown" or key == "return" or key == "down" then
@@ -1697,7 +1731,13 @@ function love.keypressed(key)
 end
 
 function love.textinput(text)
-  if not edit_mode then return end
+  if not edit_mode then
+    -- hors édition, on capte juste "?" pour ouvrir l'aide (layout-agnostic)
+    if text == "?" and not overview_mode and not black_mode and not white_mode then
+      help_mode = not help_mode
+    end
+    return
+  end
   push_undo("type")
   delete_selection()
   edit_text = edit_text:sub(1, edit_cursor - 1) .. text .. edit_text:sub(edit_cursor)
