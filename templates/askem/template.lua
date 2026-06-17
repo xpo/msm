@@ -17,15 +17,16 @@
 
 return {
   -- ============ PALETTE ============
-  -- Couleurs hex (#rrggbb). Voir aussi les 5 presets natifs de mSM :
-  -- dark, light, cream, slate, solar (cf. README dans ~/mSM/).
-  background = "#0f1620",   -- fond de slide (ou bg du shader animé)
-  color      = "#e8eef7",   -- corps de texte
-  accent     = "#4ec9ff",   -- titres `#` et accents
-  h2         = "#ffd166",   -- titres `##`
-  h3         = "#a5d8a7",   -- titres `###`
-  muted      = "#7a8a9f",   -- citations, index page
-  note       = "#b8c8de",   -- paragraphes "-> note"
+  -- Couleurs hex (#rrggbb). Triade cool : mint + sky + lavande sur fond bleu nuit.
+  -- Voir aussi les 5 presets natifs de mSM : dark, light, cream, slate, solar
+  -- (cf. README dans ~/mSM/).
+  background = "#0d1421",   -- bleu nuit profond
+  color      = "#e8eef7",   -- corps de texte (presque blanc)
+  accent     = "#5eead4",   -- titres `#` : mint / teal moderne
+  h2         = "#7dd3fc",   -- titres `##` : sky blue
+  h3         = "#c4b5fd",   -- titres `###` : lavande
+  muted      = "#94a3b8",   -- citations, index
+  note       = "#cbd5e1",   -- paragraphes "-> note"
 
   -- ============ TYPOGRAPHIE ============
   -- Tailles en pixels (en chaîne, mSM convertit). Pour utiliser une police

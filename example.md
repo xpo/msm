@@ -1,9 +1,6 @@
 ---
-theme: dark
-accent: #ff7a59
-titleSize: 84
-fontSize: 36
-padding: 90
+# Pas de surcharge de couleurs : on hérite du template askem
+# (~/mSM/templates/askem/template.lua → palette mint + sky + lavande sur nuit)
 align: left
 transition: slide
 transitionDuration: 0.35
