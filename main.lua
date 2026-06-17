@@ -162,21 +162,27 @@ local function user_templates_dir()
   return home .. "/mSM/templates"
 end
 
--- Au premier lancement : crée ~/mSM/templates/askem/ depuis l'archive .love
--- bundlée (templates/askem/template.lua + logo.png).
+-- Au premier lancement : crée ~/mSM/ avec README.md d'aide et
+-- templates/askem/ (template.lua + logo.png) depuis l'archive .love bundlée.
 local function bootstrap_user_dir()
   local dir = user_templates_dir()
   if not dir then return end
+  local mSM_root = dir:gsub("/templates$", "")
   local askem = dir .. "/askem"
-  local probe = io.open(askem .. "/template.lua", "r")
-  if probe then probe:close(); return end -- déjà là, rien à faire
+  local already_setup = io.open(askem .. "/template.lua", "r")
+  if already_setup then already_setup:close(); return end
   os.execute("mkdir -p '" .. askem:gsub("'", "'\\''") .. "'")
-  for _, name in ipairs({ "template.lua", "logo.png" }) do
-    local src = "templates/askem/" .. name
-    if love.filesystem.getInfo and love.filesystem.getInfo(src) then
-      local data = love.filesystem.read(src)
+  -- copie depuis l'archive .love
+  local copies = {
+    { src = "templates/README.md",        dst = mSM_root .. "/README.md" },
+    { src = "templates/askem/template.lua", dst = askem .. "/template.lua" },
+    { src = "templates/askem/logo.png",     dst = askem .. "/logo.png" },
+  }
+  for _, c in ipairs(copies) do
+    if love.filesystem.getInfo and love.filesystem.getInfo(c.src) then
+      local data = love.filesystem.read(c.src)
       if data then
-        local out = io.open(askem .. "/" .. name, "wb")
+        local out = io.open(c.dst, "wb")
         if out then out:write(data); out:close() end
       end
     end
