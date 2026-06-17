@@ -145,6 +145,8 @@ local function stagger_alpha_yoff(item_index, on_current)
 end
 
 local function load_image_anywhere(path)
+  if not path or path == "" then return nil end
+  -- 1. dans l'archive .love (assets de template bundlés)
   if love.filesystem.getInfo and love.filesystem.getInfo(path) then
     local data = love.filesystem.read(path)
     if data then
@@ -153,7 +155,15 @@ local function load_image_anywhere(path)
       if ok then return love.graphics.newImage(imgdata) end
     end
   end
-  return load_image(path)
+  -- 2. sur disque (chemin absolu)
+  local f = io.open(path, "rb")
+  if not f then return nil end
+  local data = f:read("*a"); f:close()
+  local ok_fd, fd = pcall(love.filesystem.newFileData, data, path)
+  if not ok_fd then return nil end
+  local ok_img, imgdata = pcall(love.image.newImageData, fd)
+  if not ok_img then return nil end
+  return love.graphics.newImage(imgdata)
 end
 
 local function user_templates_dir()
