@@ -71,7 +71,6 @@ vec4 effect(vec4 col, Image tex, vec2 tc, vec2 sc) {
 
 local SHADER_GRAIN = [[
 extern number time;
-extern vec2 resolution;
 extern vec3 bg;
 vec4 effect(vec4 col, Image tex, vec2 tc, vec2 sc) {
   vec2 seed = sc + vec2(time * 13.0, time * 17.0);
@@ -141,8 +140,8 @@ local function draw_background()
   end
   local sh = compiled_shaders[m]
   if not sh then return end
-  sh:send("time", love.timer.getTime())
-  sh:send("resolution", { pW, pH })
+  if sh:hasUniform("time") then sh:send("time", love.timer.getTime()) end
+  if sh:hasUniform("resolution") then sh:send("resolution", { pW, pH }) end
   if sh:hasUniform("c1") then sh:send("c1", { theme.accent[1], theme.accent[2], theme.accent[3] }) end
   if sh:hasUniform("c2") then sh:send("c2", { theme.h2[1], theme.h2[2], theme.h2[3] }) end
   if sh:hasUniform("c3") then sh:send("c3", { theme.h3[1], theme.h3[2], theme.h3[3] }) end

@@ -10,7 +10,11 @@ local function parse_frontmatter(text)
   if not inner then return meta, text, "" end
   for line in inner:gmatch("[^\n]+") do
     local k, v = line:match("^%s*([%w_%-]+)%s*:%s*(.-)%s*$")
-    if k then meta[k] = v end
+    if k then
+      -- strip surrounding "..." ou '...' au cas où l'utilisateur quote ses valeurs
+      v = v:match('^"(.*)"$') or v:match("^'(.*)'$") or v
+      meta[k] = v
+    end
   end
   return meta, rest, "---\n" .. inner .. "\n---\n"
 end

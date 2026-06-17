@@ -274,7 +274,12 @@
     if (!m) return { meta, body: text };
     for (const line of m[1].split("\n")) {
       const kv = line.match(/^\s*([\w_-]+)\s*:\s*(.*?)\s*$/);
-      if (kv) meta[kv[1]] = kv[2];
+      if (kv) {
+        let v = kv[2];
+        const q = v.match(/^"(.*)"$/) || v.match(/^'(.*)'$/);
+        if (q) v = q[1];
+        meta[kv[1]] = v;
+      }
     }
     return { meta, body: m[2] };
   }
