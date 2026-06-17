@@ -285,16 +285,6 @@ Bon pour : tech, data, mise en avant d'une idée fluide.
 
 ---
 
-## Magic Move (idée, pas implémenté)
-
-À la **Keynote / Slidev**, un même élément se "morphe" entre deux slides : la même image bouge, le même titre change de taille, etc. Effet très impressionnant pour des comparaisons avant/après ou des séquences.
-
-Non implémenté dans mSM v0.7. Demanderait un système d'IDs (`{#step1}`) côté `.md` pour relier les éléments entre slides, et de la math d'interpolation pendant la transition.
-
--> À mettre dans le backlog si l'usage justifie l'investissement.
-
----
-
 ## Raccourcis
 
 - **→ / Espace / Clic gauche** : slide suivante
