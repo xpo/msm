@@ -42,7 +42,10 @@ local presentation_start_t = 0
 local overview_mode = false
 local help_mode = false
 local black_mode = false
+local white_mode = false
+local auto_active = false
 local PRESENTER_BAR_H = 32
+local PROGRESS_BAR_H = 2
 
 local HELP_SECTIONS = {
   { title = "Navigation", items = {
@@ -54,7 +57,13 @@ local HELP_SECTIONS = {
     { "O",   "vue d'ensemble (mosaïque)" },
     { "F",   "plein écran" },
     { "B",   "écran noir (B ou Esc pour sortir)" },
+    { "W",   "écran blanc (W ou Esc pour sortir)" },
     { "?",   "cette aide (? ou Esc pour fermer)" },
+  }},
+  { title = "Auto-avance", items = {
+    { "A",      "activer / désactiver l'auto-avance" },
+    { "auto: N", "(frontmatter) intervalle global en secondes" },
+    { "<!-- auto: N -->", "(par slide) override d'intervalle" },
   }},
   { title = "Édition", items = {
     { "Cmd-E",  "éditer la slide courante dans l'app" },
@@ -497,6 +506,8 @@ local function apply_theme()
   theme.animate    = meta.animate or "stagger"
   theme.kenburns   = (meta.kenburns ~= "false" and meta.kenburns ~= false)
   theme.logo       = meta.logo
+  theme.auto_default = tonumber(meta.auto)
+  auto_active = (theme.auto_default ~= nil and theme.auto_default > 0)
   theme.fontSize   = tonumber(meta.fontSize)   or 34
   theme.titleSize  = tonumber(meta.titleSize)  or 72
   theme.codeSize   = tonumber(meta.codeSize)   or 24
@@ -862,6 +873,26 @@ function love.update(dt)
     trans_t = math.min(1, trans_t + dt / math.max(0.0001, theme.duration))
   end
   if flash_t > 0 then flash_t = flash_t - dt end
+
+  -- auto-avance : si actif et interval défini, avance après le délai
+  if auto_active and #slides > 0
+     and not edit_mode and not help_mode and not overview_mode
+     and not black_mode and not white_mode then
+    local slide = slides[current]
+    local interval = (slide and slide.meta and tonumber(slide.meta.auto))
+      or theme.auto_default
+    if interval and interval > 0 then
+      local elapsed = love.timer.getTime() - slide_arrived_t
+      if elapsed >= interval then
+        local nxt = current + 1
+        if nxt > #slides then nxt = 1 end -- boucle pour mode kiosque
+        previous = current
+        current = nxt
+        trans_t = 0
+        slide_arrived_t = love.timer.getTime()
+      end
+    end
+  end
   -- watcher : recharge le deck si le .md a changé sur disque (et pas en édition)
   if deck_path and not edit_mode then
     watch_timer = watch_timer + dt
@@ -1102,9 +1133,17 @@ local function draw_presenter_bar()
     format_elapsed(elapsed) .. "  ·  slide " .. format_elapsed(on_slide) .. "  ·  " .. os.date("%H:%M"),
     pad, y)
 
-  -- centre : hints courts + indication de l'aide
-  local hint = overview_mode and "Esc / O : retour"
-    or "O : vue  ·  Cmd-E : édit  ·  Tab : MarkEdit  ·  B : noir  ·  ? : aide"
+  -- centre : hints + indicateur auto si actif
+  local hint
+  if overview_mode then
+    hint = "Esc / O : retour"
+  elseif auto_active then
+    local interval = (slides[current] and slides[current].meta and tonumber(slides[current].meta.auto))
+      or theme.auto_default or 0
+    hint = "AUTO " .. (interval > 0 and interval .. "s  " or "") .. "·  A : stop  ·  ? : aide"
+  else
+    hint = "O : vue  ·  Cmd-E : édit  ·  B : noir  ·  W : blanc  ·  A : auto  ·  ? : aide"
+  end
   love.graphics.printf(hint, 0, y, W, "center")
 
   -- droite : logo (collé au bord) puis slide N/total à sa gauche
@@ -1167,6 +1206,20 @@ local function draw_help_overlay()
     end
     y = y + line_h * 0.35
   end
+end
+
+-- Barre de progression : fine ligne accent au-dessus de la barre du bas
+local function draw_progress_bar()
+  if #slides == 0 then return end
+  local W, H = love.graphics.getDimensions()
+  local y = H - PRESENTER_BAR_H - PROGRESS_BAR_H
+  -- piste
+  love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.18)
+  love.graphics.rectangle("fill", 0, y, W, PROGRESS_BAR_H)
+  -- progression
+  local p = current / math.max(1, #slides)
+  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.9)
+  love.graphics.rectangle("fill", 0, y, W * p, PROGRESS_BAR_H)
 end
 
 -- Barre du haut, configurable. Invisible si les 3 slots sont vides.
@@ -1402,11 +1455,9 @@ end
 local function ease(t) return t < 0.5 and 2 * t * t or 1 - ((-2 * t + 2) ^ 2) / 2 end
 
 function love.draw()
-  -- écran noir : surcharge tout, utile pour focaliser l'attention sur le speaker
-  if black_mode then
-    love.graphics.clear(0, 0, 0, 1)
-    return
-  end
+  -- écran noir / blanc : surcharge tout, focalise l'attention sur le speaker
+  if black_mode then love.graphics.clear(0, 0, 0, 1); return end
+  if white_mode then love.graphics.clear(1, 1, 1, 1); return end
 
   draw_background()
   if #slides == 0 then return end
@@ -1455,7 +1506,9 @@ function love.draw()
   end
 
   -- Barres : haut (configurable) et bas (présentateur, contient le logo)
+  -- + barre fine de progression juste au-dessus de la barre du bas
   draw_top_bar()
+  draw_progress_bar()
   draw_presenter_bar()
 
   if flash_t > 0 and flash_msg then
@@ -1594,8 +1647,11 @@ function love.keypressed(key)
   end
   if black_mode then
     black_mode = false
-    -- on laisse les touches de navigation continuer leur action habituelle
     if key == "b" or key == "escape" then return end
+  end
+  if white_mode then
+    white_mode = false
+    if key == "w" or key == "escape" then return end
   end
 
   if overview_mode then
@@ -1614,6 +1670,11 @@ function love.keypressed(key)
     overview_mode = true
   elseif key == "b" then
     black_mode = true
+  elseif key == "w" then
+    white_mode = true
+  elseif key == "a" then
+    auto_active = not auto_active
+    flash(auto_active and "Auto-avance ON" or "Auto-avance OFF", 1.4)
   elseif key == "h" or key == "/" or key == "?" then
     help_mode = true
   elseif key == "right" or key == "space" or key == "pagedown" or key == "return" or key == "down" then
