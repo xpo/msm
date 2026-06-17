@@ -10,6 +10,8 @@ transitionDuration: 0.35
 motion: mesh
 animate: stagger
 kenburns: true
+topLeft: Démo mSM
+topRight: askem.eu
 ---
 # mSM
 

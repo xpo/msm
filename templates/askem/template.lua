@@ -63,6 +63,18 @@ return {
   --   false         : images statiques
   -- kenburns = true,
 
+  -- ============ BARRE PRÉSENTATEUR ============
+  -- Une barre 32 px en bas de l'écran affiche : timer écoulé,
+  -- horloge HH:MM, slide N/total, le logo (ci-dessus) et un hint.
+  -- Elle est toujours visible et fait office d'outil présentateur.
+
+  -- ============ BARRE DU HAUT (optionnelle) ============
+  -- Trois slots indépendants. La barre apparaît si AU MOINS un est rempli.
+  -- Sinon, pas de barre du haut.
+  -- topLeft   = "askem",
+  -- topCenter = "Présentation déc 2025",
+  -- topRight  = "v0.10",
+
   -- ============ AUTRES ============
   -- align       = "left",       -- "left", "center", "right"
   -- transition  = "fade",       -- "fade", "slide", "push", "none"

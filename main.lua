@@ -1059,39 +1059,78 @@ local function draw_presenter_bar()
   local W, H = love.graphics.getDimensions()
   local bar_y = H - PRESENTER_BAR_H
 
-  -- fond très discret
   love.graphics.setColor(0, 0, 0, 0.28)
   love.graphics.rectangle("fill", 0, bar_y, W, PRESENTER_BAR_H)
 
   love.graphics.setFont(fonts.small)
   local fh = fonts.small:getHeight()
   local y = bar_y + (PRESENTER_BAR_H - fh) / 2
-  local pad = 24
+  local pad = 20
   love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.85)
 
   -- gauche : timer + horloge
   local elapsed = love.timer.getTime() - presentation_start_t
-  local left = format_elapsed(elapsed) .. "  ·  " .. os.date("%H:%M")
-  love.graphics.print(left, pad, y)
+  love.graphics.print(format_elapsed(elapsed) .. "  ·  " .. os.date("%H:%M"), pad, y)
 
-  -- centre : indication mode
+  -- centre : hint
   local hint = overview_mode and "Esc / O : retour" or "O : vue d'ensemble"
   love.graphics.printf(hint, 0, y, W, "center")
 
-  -- droite : slide N/total (caché en overview)
-  if not overview_mode then
-    love.graphics.printf(current .. " / " .. #slides, 0, y, W - pad, "right")
+  -- droite : logo (collé au bord) puis slide N/total à sa gauche
+  local right_edge = W - pad
+  if logo_image then
+    local iw, ih = logo_image:getDimensions()
+    local logo_h = PRESENTER_BAR_H - 8
+    local s = logo_h / ih
+    local logo_w = iw * s
+    love.graphics.setColor(1, 1, 1, 0.85)
+    love.graphics.draw(logo_image, right_edge - logo_w, bar_y + 4, 0, s, s)
+    right_edge = right_edge - logo_w - 12
   end
+  if not overview_mode then
+    love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.85)
+    local s_str = current .. " / " .. #slides
+    local sw = fonts.small:getWidth(s_str)
+    love.graphics.print(s_str, right_edge - sw, y)
+  end
+end
+
+-- Barre du haut, configurable. Invisible si les 3 slots sont vides.
+local function draw_top_bar()
+  if #slides == 0 then return end
+  local L = (meta.topLeft   ~= nil and meta.topLeft   ~= "") and meta.topLeft   or nil
+  local C = (meta.topCenter ~= nil and meta.topCenter ~= "") and meta.topCenter or nil
+  local R = (meta.topRight  ~= nil and meta.topRight  ~= "") and meta.topRight  or nil
+  if not (L or C or R) then return end
+  local W = love.graphics.getWidth()
+  local bar_h = PRESENTER_BAR_H
+  love.graphics.setColor(0, 0, 0, 0.28)
+  love.graphics.rectangle("fill", 0, 0, W, bar_h)
+  love.graphics.setFont(fonts.small)
+  local fh = fonts.small:getHeight()
+  local y = (bar_h - fh) / 2
+  local pad = 20
+  love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.85)
+  if L then love.graphics.print(L, pad, y) end
+  if C then love.graphics.printf(C, 0, y, W, "center") end
+  if R then love.graphics.printf(R, 0, y, W - pad, "right") end
+end
+
+local function top_bar_visible()
+  local L = meta.topLeft   and meta.topLeft   ~= ""
+  local C = meta.topCenter and meta.topCenter ~= ""
+  local R = meta.topRight  and meta.topRight  ~= ""
+  return L or C or R
 end
 
 local function draw_overview()
   local W, H = love.graphics.getDimensions()
   local n = #slides
   if n == 0 then return end
-  -- grille aspect-ratio aware
+  local top_h = top_bar_visible() and PRESENTER_BAR_H or 0
   local cols = math.max(1, math.min(n, math.ceil(math.sqrt(n * (W / math.max(1, H))))))
   local rows = math.ceil(n / cols)
-  local usable_h = H - PRESENTER_BAR_H
+  local usable_h = H - PRESENTER_BAR_H - top_h
   local cell_w = W / cols
   local cell_h = usable_h / rows
   local thumb_pad = 10
@@ -1100,7 +1139,7 @@ local function draw_overview()
     local col = (i - 1) % cols
     local row = math.floor((i - 1) / cols)
     local cx = col * cell_w
-    local cy = row * cell_h
+    local cy = row * cell_h + top_h
 
     local inner_w = cell_w - thumb_pad * 2
     local inner_h = cell_h - thumb_pad * 2
@@ -1146,13 +1185,14 @@ local function overview_hit_test(mx, my)
   local n = #slides
   if n == 0 then return nil end
   local W, H = love.graphics.getDimensions()
+  local top_h = top_bar_visible() and PRESENTER_BAR_H or 0
+  if my < top_h or my > H - PRESENTER_BAR_H then return nil end
   local cols = math.max(1, math.min(n, math.ceil(math.sqrt(n * (W / math.max(1, H))))))
-  local usable_h = H - PRESENTER_BAR_H
+  local usable_h = H - PRESENTER_BAR_H - top_h
   local cell_w = W / cols
   local cell_h = usable_h / math.ceil(n / cols)
-  if my > usable_h then return nil end
   local col = math.floor(mx / cell_w)
-  local row = math.floor(my / cell_h)
+  local row = math.floor((my - top_h) / cell_h)
   local idx = row * cols + col + 1
   if idx >= 1 and idx <= n then return idx end
   return nil
@@ -1293,6 +1333,7 @@ function love.draw()
 
   if overview_mode then
     draw_overview()
+    draw_top_bar()
     draw_presenter_bar()
     return
   end
@@ -1333,19 +1374,8 @@ function love.draw()
     draw_slide(current, 1, 0, 0)
   end
 
-  -- Logo overlay : bas-droite, au-dessus de la barre présentateur
-  if logo_image then
-    local iw, ih = logo_image:getDimensions()
-    local target_h = 56
-    local s = target_h / ih
-    love.graphics.setColor(1, 1, 1, 0.7)
-    love.graphics.draw(logo_image,
-      love.graphics.getWidth() - iw * s - 24,
-      love.graphics.getHeight() - ih * s - PRESENTER_BAR_H - 16,
-      0, s, s)
-  end
-
-  -- Barre présentateur (timer, horloge, slide N/total)
+  -- Barres : haut (configurable) et bas (présentateur, contient le logo)
+  draw_top_bar()
   draw_presenter_bar()
 
   if flash_t > 0 and flash_msg then
