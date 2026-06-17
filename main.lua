@@ -37,10 +37,36 @@ local bg_shader = nil
 local particles = {}
 local logo_image = nil
 
--- présentation : timer global + mode mosaïque (vue d'ensemble)
+-- présentation : timer global + modes overlay (mosaïque, aide, écran noir)
 local presentation_start_t = 0
 local overview_mode = false
+local help_mode = false
+local black_mode = false
 local PRESENTER_BAR_H = 32
+
+local HELP_SECTIONS = {
+  { title = "Navigation", items = {
+    { "->  /  Espace  /  Clic gauche", "slide suivante" },
+    { "<-  /  Up  /  Backspace",       "slide précédente" },
+    { "Home  /  End",                  "première / dernière" },
+  }},
+  { title = "Vues", items = {
+    { "O",   "vue d'ensemble (mosaïque)" },
+    { "F",   "plein écran" },
+    { "B",   "écran noir (B ou Esc pour sortir)" },
+    { "?",   "cette aide (? ou Esc pour fermer)" },
+  }},
+  { title = "Édition", items = {
+    { "Cmd-E",  "éditer la slide courante dans l'app" },
+    { "Cmd-S",  "(en édition) enregistrer + sortir" },
+    { "Tab",    "ouvrir le .md dans MarkEdit" },
+    { "R",      "recharger le deck depuis disque" },
+  }},
+  { title = "Export et sortie", items = {
+    { "E",      "exporter le deck en HTML autonome" },
+    { "Q / Esc","quitter mSM" },
+  }},
+}
 
 local SHADER_MESH = [[
 extern number time;
@@ -1068,12 +1094,17 @@ local function draw_presenter_bar()
   local pad = 20
   love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.85)
 
-  -- gauche : timer + horloge
-  local elapsed = love.timer.getTime() - presentation_start_t
-  love.graphics.print(format_elapsed(elapsed) .. "  ·  " .. os.date("%H:%M"), pad, y)
+  -- gauche : timer total · timer slide · horloge
+  local now = love.timer.getTime()
+  local elapsed = now - presentation_start_t
+  local on_slide = now - slide_arrived_t
+  love.graphics.print(
+    format_elapsed(elapsed) .. "  ·  slide " .. format_elapsed(on_slide) .. "  ·  " .. os.date("%H:%M"),
+    pad, y)
 
-  -- centre : hint
-  local hint = overview_mode and "Esc / O : retour" or "O : vue d'ensemble"
+  -- centre : hints courts + indication de l'aide
+  local hint = overview_mode and "Esc / O : retour"
+    or "O : vue  ·  Cmd-E : édit  ·  Tab : MarkEdit  ·  B : noir  ·  ? : aide"
   love.graphics.printf(hint, 0, y, W, "center")
 
   -- droite : logo (collé au bord) puis slide N/total à sa gauche
@@ -1092,6 +1123,49 @@ local function draw_presenter_bar()
     local s_str = current .. " / " .. #slides
     local sw = fonts.small:getWidth(s_str)
     love.graphics.print(s_str, right_edge - sw, y)
+  end
+end
+
+-- Overlay d'aide : pleine vue, affiche tous les raccourcis. Toggle via "?".
+local function draw_help_overlay()
+  local W, H = love.graphics.getDimensions()
+  love.graphics.setColor(0, 0, 0, 0.62)
+  love.graphics.rectangle("fill", 0, 0, W, H)
+
+  local box_w, box_h = 560, 540
+  local box_x = (W - box_w) / 2
+  local box_y = (H - box_h) / 2
+
+  love.graphics.setColor(theme.background[1], theme.background[2], theme.background[3], 0.97)
+  love.graphics.rectangle("fill", box_x, box_y, box_w, box_h, 14, 14)
+  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.5)
+  love.graphics.setLineWidth(2)
+  love.graphics.rectangle("line", box_x, box_y, box_w, box_h, 14, 14)
+
+  love.graphics.setFont(fonts.small)
+  local fh = fonts.small:getHeight()
+  local line_h = fh + 6
+  local pad = 28
+  local key_col = box_x + pad + 4
+  local desc_col = box_x + 240
+  local y = box_y + pad
+
+  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 1)
+  love.graphics.printf("Raccourcis mSM", box_x, y, box_w, "center")
+  y = y + fh * 1.8
+
+  for _, section in ipairs(HELP_SECTIONS) do
+    love.graphics.setColor(theme.h2[1], theme.h2[2], theme.h2[3], 0.95)
+    love.graphics.print(section.title, box_x + pad, y)
+    y = y + line_h
+    for _, item in ipairs(section.items) do
+      love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 1)
+      love.graphics.print(item[1], key_col, y)
+      love.graphics.setColor(theme.color[1], theme.color[2], theme.color[3], 1)
+      love.graphics.print(item[2], desc_col, y)
+      y = y + line_h
+    end
+    y = y + line_h * 0.35
   end
 end
 
@@ -1250,7 +1324,7 @@ local function draw_editor()
   love.graphics.setFont(fonts.small)
   love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.9)
   love.graphics.print(
-    "EDIT  ·  ⌘S enregistrer  ·  Esc / ⌘E annuler  ·  slide " .. current .. "/" .. #slides,
+    "EDIT  ·  Cmd-S enregistrer  ·  Esc / Cmd-E annuler  ·  slide " .. current .. "/" .. #slides,
     pad, H - 28
   )
 end
@@ -1328,6 +1402,12 @@ end
 local function ease(t) return t < 0.5 and 2 * t * t or 1 - ((-2 * t + 2) ^ 2) / 2 end
 
 function love.draw()
+  -- écran noir : surcharge tout, utile pour focaliser l'attention sur le speaker
+  if black_mode then
+    love.graphics.clear(0, 0, 0, 1)
+    return
+  end
+
   draw_background()
   if #slides == 0 then return end
 
@@ -1389,6 +1469,9 @@ function love.draw()
     love.graphics.setColor(1, 1, 1, alpha)
     love.graphics.printf(flash_msg, 20, H - bh + 14, W - 40, "center")
   end
+
+  -- L'aide vient par-dessus tout (sauf black_mode déjà traité plus haut)
+  if help_mode then draw_help_overlay() end
 end
 
 local function go_to(n)
@@ -1504,6 +1587,17 @@ function love.keypressed(key)
     return
   end
 
+  -- overlays prioritaires : aide, écran noir
+  if help_mode then
+    if key == "escape" or key == "h" or key == "/" or key == "?" then help_mode = false end
+    return
+  end
+  if black_mode then
+    black_mode = false
+    -- on laisse les touches de navigation continuer leur action habituelle
+    if key == "b" or key == "escape" then return end
+  end
+
   if overview_mode then
     if key == "escape" or key == "o" then overview_mode = false; return end
     if key == "return" or key == "space" then overview_mode = false; return end
@@ -1518,6 +1612,10 @@ function love.keypressed(key)
     love.event.quit()
   elseif key == "o" then
     overview_mode = true
+  elseif key == "b" then
+    black_mode = true
+  elseif key == "h" or key == "/" or key == "?" then
+    help_mode = true
   elseif key == "right" or key == "space" or key == "pagedown" or key == "return" or key == "down" then
     go_to(current + 1)
   elseif key == "left" or key == "pageup" or key == "backspace" or key == "up" then
