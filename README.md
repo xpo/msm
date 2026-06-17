@@ -219,16 +219,15 @@ flowchart LR
 **Rendu par player** :
 
 - **Web (`msm.html`)** : Mermaid.js est chargé depuis le CDN jsdelivr et `mermaid.run()` est appelé après le render des slides. Theme adapté automatiquement (dark/slate → `dark`, light/cream/solar → `default`).
-- **Desktop (LÖVE)** : pré-rendu PNG via le CLI `mmdc` ([mermaid-cli](https://github.com/mermaid-js/mermaid-cli)). Cache dans `<dossier-du-deck>/.msm-mermaid/<hash>.png`. Si `mmdc` est introuvable, fallback en bloc code.
+- **Desktop (LÖVE)** : pré-rendu PNG via le helper `mmd-render` **bundlé dans mSM.app** (~100 Ko, utilise WKWebView/Apple + Mermaid.js inline, aucune install nécessaire). Cache dans `<dossier-du-deck>/.msm-mermaid/<hash>.png`. Fallback : CLI `mmdc` ([mermaid-cli](https://github.com/mermaid-js/mermaid-cli)) si présent, sinon bloc code.
 - **HTML autonome (`build.lua`)** : le markdown est embarqué tel quel, le rendu Mermaid se fait à l'ouverture via le CDN (donc internet requis à la visualisation).
 
-**Installer `mmdc`** (pour le runtime desktop) :
+**Rien à installer** pour le runtime desktop (mSM.app inclut `mmd-render`). Si tu utilises `love .` en mode dev sans avoir buildé l'app, deux options :
 
-```bash
-npm install -g @mermaid-js/mermaid-cli
-```
+- builder l'app une fois (`./package-mac.sh`), le helper et Mermaid.js seront dans `mSM.app/Contents/`
+- ou installer `mmdc` : `npm install -g @mermaid-js/mermaid-cli`
 
-Le cache `.msm-mermaid/` peut être versionné avec ton deck pour que d'autres machines (sans `mmdc`) puissent l'afficher sans re-rendre.
+Le cache `.msm-mermaid/` peut être versionné avec ton deck pour le rendre 100% portable.
 
 ### Glyphes manquants
 

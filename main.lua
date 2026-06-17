@@ -117,6 +117,19 @@ end
 -- Pré-rendu des blocs ```mermaid en PNG via mmdc. Cache local par hash.
 -- Fallback gracieux en bloc code si mmdc absent ou échec.
 local function find_mmdc()
+  -- 1. Helper Swift bundlé dans le .app (préféré, ~100 Ko, no install)
+  local src = love.filesystem.getSource()
+  if src then
+    -- src ressemble à /Applications/mSM.app/Contents/Resources/mSM.love
+    -- ou /Users/xxx/DEV/mdslidemachine/ pour `love .`
+    local bundled = src:gsub("/Resources/[^/]+%.love$", "/MacOS/mmd-render")
+    if bundled ~= src and path_exists(bundled) then return bundled end
+  end
+  -- 2. mmd-render à côté du .app (mode dev / love .)
+  if path_exists("./mSM.app/Contents/MacOS/mmd-render") then
+    return "./mSM.app/Contents/MacOS/mmd-render"
+  end
+  -- 3. mmdc système (fallback npm install)
   if path_exists("/opt/homebrew/bin/mmdc") then return "/opt/homebrew/bin/mmdc" end
   if path_exists("/usr/local/bin/mmdc") then return "/usr/local/bin/mmdc" end
   local h = io.popen("which mmdc 2>/dev/null")

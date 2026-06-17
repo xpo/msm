@@ -31,6 +31,23 @@ echo "▸ 3/6 binaire vierge + .love en Resources..."
 # trouve automatiquement au démarrage via findGameInResources.
 cp "$LOVE_APP/Contents/MacOS/love" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
 cp "$APP_NAME.love" "$APP_NAME.app/Contents/Resources/$APP_NAME.love"
+
+echo "▸ 3ter/6 helper Mermaid (WKWebView)..."
+# Télécharge Mermaid.js si absent (~3 Mo, mis en cache dans tools/)
+mkdir -p tools
+if [ ! -f tools/mermaid.min.js ]; then
+  echo "   → fetch mermaid@11..."
+  curl -fLs -o tools/mermaid.min.js https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js
+fi
+# Compile mmd-render (Swift → Mach-O ~100 Ko) si swiftc est dispo
+if command -v xcrun >/dev/null 2>&1; then
+  echo "   → compilation mmd-render..."
+  xcrun -sdk macosx swiftc -O tools/mmd-render.swift \
+    -o "$APP_NAME.app/Contents/MacOS/mmd-render" 2>&1 | tail -5
+  cp tools/mermaid.min.js "$APP_NAME.app/Contents/Resources/mermaid.min.js"
+else
+  echo "   ⚠ xcrun absent, helper non bundlé (fallback npm mmdc)"
+fi
 chmod +x "$APP_NAME.app/Contents/MacOS/$APP_NAME"
 rm "$APP_NAME.app/Contents/MacOS/love"
 
@@ -115,6 +132,11 @@ if [ -n "$SIGN_IDENTITY" ]; then
   codesign --force --options runtime --timestamp \
     --entitlements "$ENTITLEMENTS" \
     --sign "$SIGN_IDENTITY" "$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1
+  # Signe mmd-render (helper Mermaid) si présent
+  if [ -f "$APP_NAME.app/Contents/MacOS/mmd-render" ]; then
+    codesign --force --options runtime --timestamp \
+      --sign "$SIGN_IDENTITY" "$APP_NAME.app/Contents/MacOS/mmd-render" >/dev/null 2>&1
+  fi
   # Signe le bundle (les entitlements ne sont attachés qu'au binaire principal)
   codesign --force --options runtime --timestamp --deep \
     --entitlements "$ENTITLEMENTS" \

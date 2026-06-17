@@ -12,6 +12,9 @@ sl-*
 # Cache Mermaid (PNG pré-rendus par mmdc, régénérés à la demande)
 .msm-mermaid/
 
+# Mermaid.js bundle (téléchargé par package-mac.sh, 3 Mo)
+tools/mermaid.min.js
+
 # Tags Release (zips produits localement)
 *.app.zip
 release/
