@@ -1182,12 +1182,37 @@ end
 -- Overlay d'aide : pleine vue, affiche tous les raccourcis. Toggle via "?".
 local function draw_help_overlay()
   local W, H = love.graphics.getDimensions()
+  love.graphics.setFont(fonts.small)
+  local fh = fonts.small:getHeight()
+  local line_h = fh + 6
+  local pad = 28
+
+  -- largeur de colonne clé : mesure la plus longue + marge
+  local max_key_w = 0
+  for _, section in ipairs(HELP_SECTIONS) do
+    for _, item in ipairs(section.items) do
+      local w = fonts.small:getWidth(item[1])
+      if w > max_key_w then max_key_w = w end
+    end
+  end
+  local key_gap = 28
+  local desc_w = 320
+
+  local box_w = max_key_w + key_gap + desc_w + pad * 2
+  -- hauteur calculée : title + sections (title + items + spacer)
+  local total_h = pad
+              + fh * 2.0 -- titre + espacement
+  for _, section in ipairs(HELP_SECTIONS) do
+    total_h = total_h + line_h + #section.items * line_h + line_h * 0.4
+  end
+  total_h = total_h + pad
+  local box_h = math.min(H - 40, math.ceil(total_h))
+
+  local box_x = (W - box_w) / 2
+  local box_y = math.max(20, (H - box_h) / 2)
+
   love.graphics.setColor(0, 0, 0, 0.62)
   love.graphics.rectangle("fill", 0, 0, W, H)
-
-  local box_w, box_h = 560, 540
-  local box_x = (W - box_w) / 2
-  local box_y = (H - box_h) / 2
 
   love.graphics.setColor(theme.background[1], theme.background[2], theme.background[3], 0.97)
   love.graphics.rectangle("fill", box_x, box_y, box_w, box_h, 14, 14)
@@ -1195,21 +1220,17 @@ local function draw_help_overlay()
   love.graphics.setLineWidth(2)
   love.graphics.rectangle("line", box_x, box_y, box_w, box_h, 14, 14)
 
-  love.graphics.setFont(fonts.small)
-  local fh = fonts.small:getHeight()
-  local line_h = fh + 6
-  local pad = 28
-  local key_col = box_x + pad + 4
-  local desc_col = box_x + 240
+  local key_col  = box_x + pad
+  local desc_col = key_col + max_key_w + key_gap
   local y = box_y + pad
 
   love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 1)
   love.graphics.printf("Raccourcis mSM", box_x, y, box_w, "center")
-  y = y + fh * 1.8
+  y = y + fh * 2.0
 
   for _, section in ipairs(HELP_SECTIONS) do
     love.graphics.setColor(theme.h2[1], theme.h2[2], theme.h2[3], 0.95)
-    love.graphics.print(section.title, box_x + pad, y)
+    love.graphics.print(section.title, key_col, y)
     y = y + line_h
     for _, item in ipairs(section.items) do
       love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 1)
@@ -1218,7 +1239,7 @@ local function draw_help_overlay()
       love.graphics.print(item[2], desc_col, y)
       y = y + line_h
     end
-    y = y + line_h * 0.35
+    y = y + line_h * 0.4
   end
 end
 
