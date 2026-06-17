@@ -392,18 +392,9 @@
   const THEMES = new Set(["dark", "light", "cream", "slate", "solar"]);
   const TRANS = new Set(["fade", "slide", "push", "none"]);
   const MOTION = new Set(["static", "mesh", "aurora", "grain", "particles"]);
-
-  // Templates : miroir des fichiers templates/<nom>/template.lua côté desktop.
-  // Les valeurs ne s'appliquent que si meta ne les surcharge pas.
-  const TEMPLATES = {
-    askem: {
-      background: "#0f1620", color: "#e8eef7", accent: "#4ec9ff",
-      h2: "#ffd166", h3: "#a5d8a7", muted: "#7a8a9f", note: "#b8c8de",
-      logo: "templates/askem/logo.png",
-      motion: "mesh",
-      fontSize: "32", titleSize: "76", padding: "96",
-    },
-  };
+  // Le web ignore le systeme de templates desktop (~/mSM/templates/).
+  // Si tu veux du branding cote web, mets les couleurs et logo
+  // directement dans le frontmatter du .md.
 
   let deckBase = "";
   let slidesCount = 0;
@@ -417,13 +408,6 @@
   }
 
   function applyMeta(meta) {
-    // Fusion template : valeurs explicites de meta gardent la priorité.
-    if (meta.template && TEMPLATES[meta.template]) {
-      const tpl = TEMPLATES[meta.template];
-      for (const k of Object.keys(tpl)) {
-        if (meta[k] == null) meta[k] = tpl[k];
-      }
-    }
     const body = document.body;
     body.className = "";
     body.classList.add("theme-" + (THEMES.has(meta.theme) ? meta.theme : "dark"));

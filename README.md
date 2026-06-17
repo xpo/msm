@@ -228,26 +228,42 @@ Côté desktop : shaders GLSL légers. Côté web : `radial-gradient` / `linear-
 
 **Ken Burns** (activé par défaut sur les images) : zoom lent (+6% sur 22 s) + pan minimal, donne du mouvement aux photos. Désactivable avec `kenburns: false`.
 
-### Templates
+### Templates (desktop uniquement)
 
-Permettent de packager une identité (palette + logo + background + tailles) en un mot-clé :
+Les templates se trouvent dans le dossier utilisateur `~/mSM/templates/<nom>/`. Au premier lancement de mSM, le template `askem` y est créé automatiquement (copié depuis l'archive .love bundlée).
 
-```yaml
-template: askem
-```
-
-Charge `templates/askem/template.lua` qui définit les defaults. Toute clé explicite dans le frontmatter d'un deck surcharge le template.
-
-Structure :
+**Structure** :
 
 ```
-templates/
+~/mSM/templates/
 └── askem/
     ├── template.lua       # palette + logo + motion par défaut
-    └── logo.png           # ajouté par toi, 100-200 px de haut idéalement
+    └── logo.png           # logo affiché en bas-droite
 ```
 
-Pour créer ton propre template : copie `templates/askem/` sous un autre nom, édite `template.lua`. Le runtime web a une copie en dur dans `msm.html` (objet `TEMPLATES`), à synchroniser si tu publies un template partagé.
+**Application par défaut** : `askem` est appliqué automatiquement si `~/mSM/templates/askem/template.lua` existe. Pas besoin de mettre `template: askem` dans tes `.md`.
+
+**Override** :
+
+- `template: monlogo` → charge `~/mSM/templates/monlogo/template.lua`
+- `template: none` → désactive tout template
+- toute clé explicite (`accent:`, `motion:`, `logo:`, …) dans le frontmatter du `.md` surcharge la valeur correspondante du template
+
+**Créer un template** : crée un dossier `~/mSM/templates/<nom>/` avec un `template.lua` qui retourne une table de valeurs. Exemple :
+
+```lua
+return {
+  background = "#0f1620",
+  color      = "#e8eef7",
+  accent     = "#4ec9ff",
+  h2         = "#ffd166",
+  h3         = "#a5d8a7",
+  logo       = "logo.png",        -- chemin relatif au dossier template
+  motion     = "mesh",
+}
+```
+
+Le runtime **web** ne gère pas les templates : si tu veux du branding cohérent en HTML autonome, mets les couleurs et le `logo:` directement dans le frontmatter du deck.
 
 ### Diagrammes Mermaid
 

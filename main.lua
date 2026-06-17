@@ -156,15 +156,51 @@ local function load_image_anywhere(path)
   return load_image(path)
 end
 
+local function user_templates_dir()
+  local home = os.getenv("HOME") or ""
+  if home == "" then return nil end
+  return home .. "/mSM/templates"
+end
+
+-- Au premier lancement : crée ~/mSM/templates/askem/ depuis l'archive .love
+-- bundlée (templates/askem/template.lua + logo.png).
+local function bootstrap_user_dir()
+  local dir = user_templates_dir()
+  if not dir then return end
+  local askem = dir .. "/askem"
+  local probe = io.open(askem .. "/template.lua", "r")
+  if probe then probe:close(); return end -- déjà là, rien à faire
+  os.execute("mkdir -p '" .. askem:gsub("'", "'\\''") .. "'")
+  for _, name in ipairs({ "template.lua", "logo.png" }) do
+    local src = "templates/askem/" .. name
+    if love.filesystem.getInfo and love.filesystem.getInfo(src) then
+      local data = love.filesystem.read(src)
+      if data then
+        local out = io.open(askem .. "/" .. name, "wb")
+        if out then out:write(data); out:close() end
+      end
+    end
+  end
+end
+
 local function load_template(name)
-  if not name or name == "" then return nil end
-  local path = "templates/" .. name .. "/template.lua"
-  if not (love.filesystem.getInfo and love.filesystem.getInfo(path)) then return nil end
-  local chunk = love.filesystem.load(path)
+  if not name or name == "" or name == "none" then return nil end
+  local dir = user_templates_dir()
+  if not dir then return nil end
+  local tpl_dir = dir .. "/" .. name
+  local path = tpl_dir .. "/template.lua"
+  local probe = io.open(path, "r")
+  if not probe then return nil end
+  local content = probe:read("*a"); probe:close()
+  local chunk, err = load(content, "@" .. path, "t")
   if not chunk then return nil end
   local ok, tpl = pcall(chunk)
-  if ok and type(tpl) == "table" then return tpl end
-  return nil
+  if not ok or type(tpl) ~= "table" then return nil end
+  -- Résout les chemins relatifs (logo, font) au dossier du template.
+  if tpl.logo and not tpl.logo:match("^/") then
+    tpl.logo = tpl_dir .. "/" .. tpl.logo
+  end
+  return tpl
 end
 
 -- editor state
@@ -375,14 +411,14 @@ local function lfs(path, size)
 end
 
 local function apply_theme()
-  -- Templates : si meta.template est posé, charger ses defaults dans meta
-  -- (les valeurs explicites de meta gardent la priorité).
-  if meta.template then
-    local tpl = load_template(meta.template)
-    if tpl then
-      for k, v in pairs(tpl) do
-        if meta[k] == nil then meta[k] = v end
-      end
+  -- Templates : askem appliqué par défaut depuis ~/mSM/templates/askem/
+  -- Override possible via `template: <nom>` ou `template: none` pour désactiver.
+  local tpl_name = meta.template
+  if tpl_name == nil then tpl_name = "askem" end
+  local tpl = load_template(tpl_name)
+  if tpl then
+    for k, v in pairs(tpl) do
+      if meta[k] == nil then meta[k] = v end
     end
   end
   local base = THEMES[meta.theme or ""] or THEMES.dark
@@ -748,6 +784,7 @@ local function show_welcome()
 end
 
 function love.load(args)
+  bootstrap_user_dir()
   local path = args and args[1]
   if path then
     load_deck(path)

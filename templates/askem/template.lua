@@ -10,8 +10,8 @@ return {
   h3         = "#a5d8a7",
   muted      = "#7a8a9f",
   note       = "#b8c8de",
-  -- branding
-  logo       = "templates/askem/logo.png",
+  -- branding (chemin relatif au dossier du template)
+  logo       = "logo.png",
   -- motion par défaut : mesh gradient léger
   motion     = "mesh",
   -- typographie un peu plus aérée
