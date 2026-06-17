@@ -126,6 +126,11 @@ end
 
 local function draw_background()
   local W, H = love.graphics.getDimensions()
+  -- En HiDPI/Retina, screen_coords dans le shader est en pixels physiques,
+  -- pas en pixels logiques. Il faut envoyer la résolution physique pour
+  -- que sc/resolution donne bien des UV dans [0,1].
+  local pW = love.graphics.getPixelWidth and love.graphics.getPixelWidth() or W
+  local pH = love.graphics.getPixelHeight and love.graphics.getPixelHeight() or H
   love.graphics.clear(theme.background)
   local m = current_motion()
   if m == "particles" then
@@ -137,7 +142,7 @@ local function draw_background()
   local sh = compiled_shaders[m]
   if not sh then return end
   sh:send("time", love.timer.getTime())
-  sh:send("resolution", { W, H })
+  sh:send("resolution", { pW, pH })
   if sh:hasUniform("c1") then sh:send("c1", { theme.accent[1], theme.accent[2], theme.accent[3] }) end
   if sh:hasUniform("c2") then sh:send("c2", { theme.h2[1], theme.h2[2], theme.h2[3] }) end
   if sh:hasUniform("c3") then sh:send("c3", { theme.h3[1], theme.h3[2], theme.h3[3] }) end
