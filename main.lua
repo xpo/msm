@@ -10,7 +10,12 @@ local function filter_glyphs(text, font)
   local parts = {}
   for _, code in utf8.codes(text) do
     local ch = utf8.char(code)
-    if font:hasGlyphs(ch) then parts[#parts + 1] = ch end
+    -- Préserve les whitespaces (newlines, tabs, espaces) même si la police
+    -- ne les rapporte pas via hasGlyphs : sinon les blocs de code multilignes
+    -- se retrouvent écrasés sur une seule ligne.
+    if ch == "\n" or ch == "\t" or ch == " " or font:hasGlyphs(ch) then
+      parts[#parts + 1] = ch
+    end
   end
   return table.concat(parts)
 end
@@ -530,7 +535,19 @@ local function apply_theme()
   fonts.h1    = lfs(family.r, theme.titleSize)
   fonts.h2    = lfs(family.r, math.floor(theme.titleSize * 0.68))
   fonts.h3    = lfs(family.r, math.floor(theme.titleSize * 0.48))
-  fonts.code  = love.graphics.newFont(theme.codeSize)
+  -- Police monospace réelle pour les blocs de code (sinon les arbres ascii,
+  -- les indentations et l'alignement colonne ne tiennent pas).
+  local mono_candidates = {
+    "/System/Library/Fonts/Supplemental/Courier New.ttf",
+    "/System/Library/Fonts/Menlo.ttc",
+    "/System/Library/Fonts/SFNSMono.ttf",
+  }
+  local mono_path
+  for _, p in ipairs(mono_candidates) do
+    if path_exists(p) then mono_path = p; break end
+  end
+  fonts.code = mono_path and load_font(mono_path, theme.codeSize)
+             or love.graphics.newFont(theme.codeSize)
   fonts.small = love.graphics.newFont(16)
   -- Variantes (uniquement pour la taille du texte courant ; headings restent réguliers)
   fonts.text_b  = family.b  and lfs(family.b,  theme.fontSize) or nil
