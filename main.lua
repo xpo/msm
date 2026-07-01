@@ -48,6 +48,7 @@ local overview_mode = false
 local help_mode = false
 local black_mode = false
 local white_mode = false
+local notes_mode = false
 local auto_active = false
 local laser_mode = false
 local laser_trail = {} -- file FIFO de {x, y, t}
@@ -67,6 +68,7 @@ local HELP_SECTIONS = {
     { "B",   "écran noir (B ou Esc pour sortir)" },
     { "W",   "écran blanc (W ou Esc pour sortir)" },
     { "L",   "laser pointeur (suivre la souris, traînée 1.2s)" },
+    { "C",   "notes de speaker (commentaires HTML de la slide)" },
     { "H ou ?", "cette aide (Esc pour fermer)" },
   }},
   { title = "Auto-avance", items = {
@@ -1173,7 +1175,7 @@ local function draw_presenter_bar()
       or theme.auto_default or 0
     hint = "AUTO " .. (interval > 0 and interval .. "s  " or "") .. "·  A : stop  ·  ? : aide"
   else
-    hint = "O : vue  ·  L : laser  ·  B : noir  ·  W : blanc  ·  A : auto  ·  ? : aide"
+    hint = "C : notes  ·  L : laser  ·  B/W : noir/blanc  ·  O : vue  ·  ? : aide"
   end
   love.graphics.printf(hint, 0, y, W, "center")
 
@@ -1272,6 +1274,67 @@ local function draw_progress_bar()
   local p = current / math.max(1, #slides)
   love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.9)
   love.graphics.rectangle("fill", 0, y, W * p, PROGRESS_BAR_H)
+end
+
+-- Overlay des notes de speaker : les commentaires HTML de la slide courante.
+-- Toggle via "C". Rendu texte scrollable, box centrée.
+local function draw_notes_overlay()
+  local slide = slides[current]
+  local notes = slide and slide.notes or {}
+  local W, H = love.graphics.getDimensions()
+
+  love.graphics.setFont(fonts.small)
+  local fh = fonts.small:getHeight()
+  local line_h = fh + 6
+  local pad = 28
+  local box_w = math.min(720, W - 100)
+  local text_w = box_w - pad * 2
+
+  -- calcule le nb de lignes en tenant compte du wrap
+  local total_lines = 2 -- titre + espacement
+  local text_parts = {}
+  if #notes == 0 then
+    text_parts[1] = "(aucune note pour cette slide)"
+    total_lines = total_lines + 1
+  else
+    for i, note in ipairs(notes) do
+      text_parts[#text_parts + 1] = note
+      local _, wrapped = fonts.small:getWrap(note, text_w)
+      total_lines = total_lines + #wrapped
+      if i < #notes then
+        text_parts[#text_parts + 1] = ""  -- séparateur
+        total_lines = total_lines + 1
+      end
+    end
+  end
+  local box_h = math.min(H - 60, pad * 2 + total_lines * line_h)
+  local box_x = (W - box_w) / 2
+  local box_y = (H - box_h) / 2
+
+  love.graphics.setColor(0, 0, 0, 0.6)
+  love.graphics.rectangle("fill", 0, 0, W, H)
+  love.graphics.setColor(theme.background[1], theme.background[2], theme.background[3], 0.97)
+  love.graphics.rectangle("fill", box_x, box_y, box_w, box_h, 14, 14)
+  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.55)
+  love.graphics.setLineWidth(2)
+  love.graphics.rectangle("line", box_x, box_y, box_w, box_h, 14, 14)
+
+  local y = box_y + pad
+  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 1)
+  love.graphics.printf("Notes de speaker  ·  slide " .. current .. "/" .. #slides,
+    box_x, y, box_w, "center")
+  y = y + fh * 2
+
+  love.graphics.setColor(theme.color[1], theme.color[2], theme.color[3], 0.95)
+  for _, chunk in ipairs(text_parts) do
+    if chunk == "" then
+      y = y + line_h * 0.6
+    else
+      love.graphics.printf(chunk, box_x + pad, y, text_w, "left")
+      local _, wrapped = fonts.small:getWrap(chunk, text_w)
+      y = y + #wrapped * line_h
+    end
+  end
 end
 
 -- Barre du haut, configurable. Invisible si les 3 slots sont vides.
@@ -1575,7 +1638,8 @@ function love.draw()
     love.graphics.printf(flash_msg, 20, H - bh + 14, W - 40, "center")
   end
 
-  -- L'aide vient par-dessus tout (sauf black_mode déjà traité plus haut)
+  -- Overlays au-dessus de tout (sauf black_mode/white_mode déjà traités plus haut)
+  if notes_mode then draw_notes_overlay() end
   if help_mode then draw_help_overlay() end
 
   -- Laser pointer : trainée + halo au-dessus de tout
@@ -1708,9 +1772,16 @@ function love.keypressed(key)
     return
   end
 
-  -- overlays prioritaires : aide, écran noir
+  -- overlays prioritaires : aide, notes, écran noir/blanc
   if help_mode then
     if key == "escape" or key == "h" or key == "/" or key == "?" then help_mode = false end
+    return
+  end
+  if notes_mode then
+    if key == "escape" or key == "c" then notes_mode = false end
+    -- laisse les flèches naviguer entre slides pour lire les notes en enchainement
+    if key == "right" or key == "down" or key == "space" then go_to(current + 1) end
+    if key == "left" or key == "up" then go_to(current - 1) end
     return
   end
   if black_mode then
@@ -1747,6 +1818,8 @@ function love.keypressed(key)
     laser_mode = not laser_mode
     laser_trail = {}
     love.mouse.setVisible(not laser_mode)
+  elseif key == "c" then
+    notes_mode = not notes_mode
   elseif key == "h" or key == "/" or key == "?" then
     help_mode = true
   elseif key == "right" or key == "space" or key == "pagedown" or key == "return" or key == "down" then

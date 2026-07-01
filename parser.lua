@@ -71,8 +71,22 @@ end
 local function parse_slide(lines)
   local els = {}
   local slide_meta = {}
+  local notes = {}
   local code_buf, in_code, code_lang = nil, false, nil
   local table_buf = nil
+  local comment_buf, in_comment = nil, false
+
+  local function store_comment(content)
+    content = (content or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if content == "" then return end
+    -- Distingue meta-slide (key: value) des notes de speaker
+    local mk, mv = content:match("^([%w_%-]+)%s*:%s*(.-)%s*$")
+    if mk and not content:find("\n") then
+      slide_meta[mk] = mv
+    else
+      notes[#notes + 1] = content
+    end
+  end
 
   local function flush_table()
     if not table_buf or #table_buf == 0 then return end
@@ -91,10 +105,25 @@ local function parse_slide(lines)
   end
 
   for _, line in ipairs(lines) do
-    -- Override slide-level via commentaire HTML : <!-- motion: aurora -->
-    local mk, mv = line:match("^%s*<!%-%-%s*([%w_%-]+)%s*:%s*(.-)%s*%-%->%s*$")
-    if mk then
-      slide_meta[mk] = mv
+    -- Commentaires HTML : route meta-slide (key:value) ou notes de speaker
+    if in_comment then
+      local before = line:match("^(.-)%-%->")
+      if before then
+        comment_buf[#comment_buf + 1] = before
+        store_comment(table.concat(comment_buf, "\n"))
+        comment_buf, in_comment = nil, false
+      else
+        comment_buf[#comment_buf + 1] = line
+      end
+    elseif line:match("^%s*<!%-%-.-%-%->%s*$") then
+      -- commentaire single-line
+      local inner = line:match("^%s*<!%-%-%s*(.-)%s*%-%->%s*$")
+      store_comment(inner)
+    elseif line:match("^%s*<!%-%-") then
+      -- ouverture d'un commentaire multi-lignes
+      comment_buf, in_comment = {}, true
+      local starter = line:match("^%s*<!%-%-%s*(.*)$") or ""
+      if starter ~= "" then comment_buf[1] = starter end
     elseif line:match("^```") then
       flush_table()
       if in_code then
@@ -138,6 +167,7 @@ local function parse_slide(lines)
   while #els > 0 and els[1].type == "space" do table.remove(els, 1) end
   while #els > 0 and els[#els].type == "space" do table.remove(els) end
   els.meta = slide_meta
+  els.notes = notes
   return els
 end
 
