@@ -440,18 +440,27 @@ local function svg_to_png(src_abs)
   local png_path = cache_dir .. "/" .. basename .. ".png"
   if path_exists(png_path) then return png_path end
   os.execute("mkdir -p '" .. cache_dir:gsub("'", "'\\''") .. "'")
+
+  -- 1. helper Swift mmd-render bundlé dans mSM.app : WKWebView respecte
+  -- le viewBox du SVG, produit un PNG à la vraie dimension (pas de letterbox)
+  local mmdr = find_mmdc()
+  if mmdr and mmdr:match("mmd%-render$") then
+    local cmd = string.format("%q -i %q -o %q 2>&1", mmdr, src_abs, png_path)
+    local h = io.popen(cmd)
+    if h then h:read("*a"); h:close() end
+    if path_exists(png_path) then return png_path end
+  end
+
+  -- 2. fallback qlmanage (natif macOS mais letterbox en carré)
   local ql_out = cache_dir .. "/" .. basename .. ".svg.png"
-  -- Chemin absolu explicite : les GUI apps macOS n'ont pas /usr/bin garanti dans PATH
-  local qlmanage = "/usr/bin/qlmanage"
   local cmd = string.format(
-    "%s -t -s 2000 -o %q %q 2>&1",
-    qlmanage, cache_dir, src_abs)
+    "/usr/bin/qlmanage -t -s 2000 -o %q %q 2>&1",
+    cache_dir, src_abs)
   local h = io.popen(cmd)
-  local out = h and h:read("*a") or ""
-  if h then h:close() end
+  if h then h:read("*a"); h:close() end
   if path_exists(ql_out) then os.rename(ql_out, png_path) end
   if path_exists(png_path) then return png_path end
-  io.stderr:write("mSM svg: echec conversion " .. src_abs .. "\n" .. out .. "\n")
+  io.stderr:write("mSM svg: echec conversion " .. src_abs .. "\n")
   return nil
 end
 

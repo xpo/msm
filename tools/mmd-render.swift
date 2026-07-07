@@ -170,12 +170,28 @@ guard !mermaidJS.isEmpty else {
 }
 
 // ---- HTML ----
-let escaped = source
-    .replacingOccurrences(of: "&", with: "&amp;")
-    .replacingOccurrences(of: "<", with: "&lt;")
-    .replacingOccurrences(of: ">", with: "&gt;")
+// Détection SVG : soit XML declaration, soit balise <svg racine
+let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+let isSvg = trimmed.hasPrefix("<?xml") || trimmed.hasPrefix("<svg")
 
-let html = """
+let html: String
+if isSvg {
+    // SVG brut : embed direct, WKWebView respecte le viewBox
+    html = """
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>html,body{margin:0;background:transparent;}
+svg{display:block;}</style>
+</head><body>
+\(source)
+</body></html>
+"""
+} else {
+    let escaped = source
+        .replacingOccurrences(of: "&", with: "&amp;")
+        .replacingOccurrences(of: "<", with: "&lt;")
+        .replacingOccurrences(of: ">", with: "&gt;")
+    html = """
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <style>html,body{margin:0;background:transparent;font-family:-apple-system,sans-serif;}</style>
@@ -187,6 +203,7 @@ let html = """
 </script>
 </body></html>
 """
+}
 
 // ---- run ----
 let app = NSApplication.shared
