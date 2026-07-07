@@ -862,9 +862,12 @@ local function draw_slide(idx, alpha, offX, offY)
     local yy = y + s_yoff
     if a > 0.001 then
       if (el.type == "image" or el.type == "mermaid") and el.texture then
-        -- Ken Burns : zoom + drift léger autour du centre, désactivable
+        -- Ken Burns : zoom + drift léger autour du centre. Skip pour les
+        -- diagrammes (mermaid, SVG) où le zoom nuit à la lecture du contenu.
+        local is_diagram = el.type == "mermaid"
+          or (el.src and el.src:lower():match("%.svg$"))
         local kb_z, kb_dx, kb_dy = 1, 0, 0
-        if theme.kenburns and on_current then
+        if theme.kenburns and on_current and not is_diagram then
           local elapsed = love.timer.getTime() - slide_arrived_t
           kb_z = 1 + math.min(0.06, elapsed * 0.005)
           kb_dx = math.sin(elapsed * 0.08) * 5
@@ -1303,17 +1306,15 @@ local function draw_help_overlay()
   end
 end
 
--- Barre de progression : fine ligne accent au-dessus de la barre du bas
+-- Barre de progression : fine ligne accent au-dessus de la barre du bas.
+-- Pas de piste vide (donnait un liseré pâle disgracieux), juste la partie
+-- remplie.
 local function draw_progress_bar()
   if #slides == 0 then return end
   local W, H = love.graphics.getDimensions()
   local y = H - PRESENTER_BAR_H - PROGRESS_BAR_H
-  -- piste
-  love.graphics.setColor(theme.muted[1], theme.muted[2], theme.muted[3], 0.18)
-  love.graphics.rectangle("fill", 0, y, W, PROGRESS_BAR_H)
-  -- progression
   local p = current / math.max(1, #slides)
-  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.9)
+  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.75)
   love.graphics.rectangle("fill", 0, y, W * p, PROGRESS_BAR_H)
 end
 
