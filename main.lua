@@ -430,10 +430,42 @@ local function ensure_mermaid_png(src, out_path)
   return ok
 end
 
+-- SVG : LÖVE ne les décode pas nativement. On les rasterise à la volée via
+-- qlmanage (natif macOS Quick Look, WebKit sous le capot) et on cache le
+-- PNG produit à côté du deck.
+local function svg_to_png(src_abs)
+  local basename = src_abs:match("([^/]+)%.[sS][vV][gG]$")
+  if not basename then return nil end
+  local cache_dir = deck_dir .. ".msm-svg"
+  local png_path = cache_dir .. "/" .. basename .. ".png"
+  if path_exists(png_path) then return png_path end
+  os.execute("mkdir -p '" .. cache_dir:gsub("'", "'\\''") .. "'")
+  local ql_out = cache_dir .. "/" .. basename .. ".svg.png"
+  -- Chemin absolu explicite : les GUI apps macOS n'ont pas /usr/bin garanti dans PATH
+  local qlmanage = "/usr/bin/qlmanage"
+  local cmd = string.format(
+    "%s -t -s 2000 -o %q %q 2>&1",
+    qlmanage, cache_dir, src_abs)
+  local h = io.popen(cmd)
+  local out = h and h:read("*a") or ""
+  if h then h:close() end
+  if path_exists(ql_out) then os.rename(ql_out, png_path) end
+  if path_exists(png_path) then return png_path end
+  io.stderr:write("mSM svg: echec conversion " .. src_abs .. "\n" .. out .. "\n")
+  return nil
+end
+
 local function load_image(src)
-  local data = read_bytes(resolve(src))
+  if not src or src == "" then return nil end
+  local abs = resolve(src)
+  if abs:lower():match("%.svg$") then
+    local png = svg_to_png(abs)
+    if not png then return nil end
+    abs = png
+  end
+  local data = read_bytes(abs)
   if not data then return nil end
-  local ok, fd = pcall(love.filesystem.newFileData, data, src)
+  local ok, fd = pcall(love.filesystem.newFileData, data, abs)
   if not ok then return nil end
   local ok2, imgdata = pcall(love.image.newImageData, fd)
   if not ok2 then return nil end

@@ -12,6 +12,9 @@ sl-*
 # Cache Mermaid (PNG pré-rendus par mmdc, régénérés à la demande)
 .msm-mermaid/
 
+# Cache SVG (rasterisations qlmanage à côté du deck, régénérées à la demande)
+.msm-svg/
+
 # Mermaid.js bundle (téléchargé par package-mac.sh, 3 Mo)
 tools/mermaid.min.js
 
