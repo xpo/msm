@@ -835,6 +835,22 @@ local function draw_slide(idx, alpha, offX, offY)
   local maxW, maxH = W - pad * 2, H - pad * 2
   local items, total = layout_slide(slide, maxW, maxH)
 
+  -- Si ça déborde en mode shrink : d'abord essayer un padding plus serré
+  -- (donne plus de largeur, le code re-wrappe, souvent ça suffit sans scale).
+  -- Le scale uniforme intervient seulement si la slide dépasse encore.
+  if total > maxH and theme.overflow == "shrink" then
+    local min_pad = 40  -- ne pas mordre les barres du haut/bas (32px chacune)
+    if pad > min_pad then
+      local new_pad = math.max(min_pad, pad * math.min(1, maxH / total))
+      local new_maxW, new_maxH = W - new_pad * 2, H - new_pad * 2
+      local items2, total2 = layout_slide(slide, new_maxW, new_maxH)
+      if total2 < total then
+        pad, maxW, maxH = new_pad, new_maxW, new_maxH
+        items, total = items2, total2
+      end
+    end
+  end
+
   local scale, y_start = 1, pad
   if total <= maxH then
     y_start = pad + (maxH - total) / 2
