@@ -1498,12 +1498,39 @@ local function overview_hit_test(mx, my)
   return nil
 end
 
+-- Style d'une ligne dans l'éditeur : font + couleur en fonction du markdown
+-- reconnu. Le state `in_code` porte l'état du bloc code triple-backtick.
+local function editor_line_style(line, in_code)
+  if in_code then
+    return fonts.code, theme.muted
+  end
+  if line:match("^```") then
+    return fonts.code, theme.muted
+  end
+  if line:match("^#%s") then
+    return fonts.text, theme.accent
+  end
+  if line:match("^##%s") then
+    return fonts.text, theme.h2
+  end
+  if line:match("^###%s") then
+    return fonts.text, theme.h3
+  end
+  if line:match("^%s*%-%s*%>%s") then
+    return fonts.code, theme.note
+  end
+  if line:match("^>%s") or line:match("^>$") then
+    return fonts.code, theme.muted
+  end
+  if line:match("^[-%*]%s") then
+    return fonts.code, theme.color
+  end
+  return fonts.code, theme.color
+end
+
 local function draw_editor()
   local W, H = love.graphics.getDimensions()
   local pad = theme.padding
-  local font = fonts.code
-  love.graphics.setFont(font)
-  local line_h = font:getHeight() + 4
   local sel_min, sel_max = sel_range()
 
   love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.45)
@@ -1511,15 +1538,20 @@ local function draw_editor()
 
   local i, n = 1, #edit_text
   local y = pad
+  local in_code = false
   while i <= n + 1 do
     local le = i
     while le <= n and edit_text:sub(le, le) ~= "\n" do le = le + 1 end
+    local line = edit_text:sub(i, le - 1)
 
-    -- highlight de la sélection pour cette ligne
+    -- style : chaque ligne peut avoir son propre font/couleur
+    local font, color = editor_line_style(line, in_code)
+    local line_h = font:getHeight() + 4
+
+    -- highlight de sélection (mesuré avec le font de la ligne courante)
     if sel_min and sel_min < sel_max then
       local s = math.max(i, sel_min)
       local e = math.min(le, sel_max)
-      -- si la sélection englobe le \n de cette ligne, étend un peu vers la droite
       local trailing = (sel_max > le) and 12 or 0
       if s < e or trailing > 0 then
         local x1 = pad + font:getWidth(edit_text:sub(i, s - 1))
@@ -1530,10 +1562,11 @@ local function draw_editor()
     end
 
     -- texte
-    love.graphics.setColor(theme.color)
-    love.graphics.print(edit_text:sub(i, le - 1), pad, y)
+    love.graphics.setFont(font)
+    love.graphics.setColor(color)
+    love.graphics.print(line, pad, y)
 
-    -- curseur
+    -- curseur (position calculée avec le font de la ligne courante)
     if edit_cursor >= i and edit_cursor <= le then
       local cx = pad + font:getWidth(edit_text:sub(i, edit_cursor - 1))
       if (love.timer.getTime() - edit_caret_seed) % 1 < 0.55 then
@@ -1541,6 +1574,9 @@ local function draw_editor()
         love.graphics.rectangle("fill", cx, y - 2, 2, line_h)
       end
     end
+
+    -- bascule état bloc code triple-backtick pour la ligne suivante
+    if line:match("^```") then in_code = not in_code end
 
     y = y + line_h
     i = le + 1
