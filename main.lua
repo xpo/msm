@@ -1530,7 +1530,10 @@ end
 
 local function draw_editor()
   local W, H = love.graphics.getDimensions()
-  local pad = theme.padding
+  -- Padding réduit pour l'éditeur : askem ou autres templates généreux
+  -- perdent trop de largeur, les lignes de code débordaient à droite.
+  local pad = math.min(theme.padding or 60, 48)
+  local wrap_w = W - pad * 2
   local sel_min, sel_max = sel_range()
 
   love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.45)
@@ -1544,41 +1547,69 @@ local function draw_editor()
     while le <= n and edit_text:sub(le, le) ~= "\n" do le = le + 1 end
     local line = edit_text:sub(i, le - 1)
 
-    -- style : chaque ligne peut avoir son propre font/couleur
     local font, color = editor_line_style(line, in_code)
-    local line_h = font:getHeight() + 4
+    local base_h = font:getHeight() + 4
 
-    -- highlight de sélection (mesuré avec le font de la ligne courante)
+    -- nombre de sous-lignes visuelles après wrap
+    local _, wrapped = font:getWrap(line, wrap_w)
+    local n_visual = math.max(1, #wrapped)
+    local block_h = n_visual * base_h
+
+    -- helper : position visuelle (sub_line, x) d'un byte offset
+    local function pos_of(byte_end)
+      local prefix = edit_text:sub(i, byte_end - 1)
+      local _, pw = font:getWrap(prefix, wrap_w)
+      local sub = math.max(1, #pw)
+      local last = pw[#pw] or ""
+      return sub, pad + font:getWidth(last)
+    end
+
+    -- highlight de la sélection : rectangles par sous-ligne
     if sel_min and sel_min < sel_max then
       local s = math.max(i, sel_min)
       local e = math.min(le, sel_max)
       local trailing = (sel_max > le) and 12 or 0
       if s < e or trailing > 0 then
-        local x1 = pad + font:getWidth(edit_text:sub(i, s - 1))
-        local x2 = pad + font:getWidth(edit_text:sub(i, e - 1)) + trailing
+        local s_sub, s_x = pos_of(s)
+        local e_sub, e_x = pos_of(e)
+        e_x = e_x + trailing
         love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], 0.28)
-        love.graphics.rectangle("fill", x1, y - 2, math.max(2, x2 - x1), line_h)
+        if s_sub == e_sub then
+          love.graphics.rectangle("fill", s_x, y + (s_sub - 1) * base_h - 2,
+            math.max(2, e_x - s_x), base_h)
+        else
+          -- première sous-ligne
+          love.graphics.rectangle("fill", s_x, y + (s_sub - 1) * base_h - 2,
+            (pad + wrap_w) - s_x, base_h)
+          -- sous-lignes du milieu
+          for sub = s_sub + 1, e_sub - 1 do
+            love.graphics.rectangle("fill", pad, y + (sub - 1) * base_h - 2, wrap_w, base_h)
+          end
+          -- dernière sous-ligne
+          love.graphics.rectangle("fill", pad, y + (e_sub - 1) * base_h - 2,
+            math.max(2, e_x - pad), base_h)
+        end
       end
     end
 
-    -- texte
+    -- texte avec wrap
     love.graphics.setFont(font)
     love.graphics.setColor(color)
-    love.graphics.print(line, pad, y)
+    love.graphics.printf(line, pad, y, wrap_w, "left")
 
-    -- curseur (position calculée avec le font de la ligne courante)
+    -- curseur (positionné sur la sous-ligne visuelle correspondante)
     if edit_cursor >= i and edit_cursor <= le then
-      local cx = pad + font:getWidth(edit_text:sub(i, edit_cursor - 1))
+      local sub, cx = pos_of(edit_cursor)
+      local cy = y + (sub - 1) * base_h
       if (love.timer.getTime() - edit_caret_seed) % 1 < 0.55 then
         love.graphics.setColor(theme.accent)
-        love.graphics.rectangle("fill", cx, y - 2, 2, line_h)
+        love.graphics.rectangle("fill", cx, cy - 2, 2, base_h)
       end
     end
 
-    -- bascule état bloc code triple-backtick pour la ligne suivante
     if line:match("^```") then in_code = not in_code end
 
-    y = y + line_h
+    y = y + block_h
     i = le + 1
     if i > n + 1 then break end
   end
