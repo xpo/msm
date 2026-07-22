@@ -196,6 +196,96 @@
       max-height: 48px; opacity: 0.7;
       pointer-events: none; z-index: 40;
     }
+
+    /* ---- Barre présentateur (bas), top bar, progress bar ---- */
+    .p-bar {
+      position: fixed; left: 0; right: 0; height: 32px;
+      background: rgba(0, 0, 0, 0.28);
+      color: var(--muted);
+      font-size: 14px; line-height: 32px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      display: flex; align-items: center; z-index: 40;
+      user-select: none;
+    }
+    .p-bar .col { padding: 0 20px; }
+    .p-bar .col.left { flex: 0 0 auto; }
+    .p-bar .col.center { flex: 1; text-align: center; opacity: 0.85; }
+    .p-bar .col.right { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
+    .p-bar-bottom { bottom: 0; }
+    .p-bar-top { top: 0; }
+    .p-bar-top.hidden { display: none; }
+    .p-bar .logo-in-bar { height: 24px; opacity: 0.85; }
+
+    .progress-bar {
+      position: fixed; left: 0; height: 2px;
+      bottom: 32px; z-index: 41;
+      background: color-mix(in srgb, var(--accent) 75%, transparent);
+      transition: width 0.3s ease;
+    }
+
+    /* ---- Overlays plein écran : help, notes ---- */
+    .overlay {
+      position: fixed; inset: 0; z-index: 60;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.15s;
+    }
+    .overlay.visible { opacity: 1; pointer-events: auto; }
+    .overlay-box {
+      background: var(--bg); color: var(--fg);
+      max-width: 640px; width: 92%; max-height: 82vh;
+      overflow-y: auto;
+      border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+      border-radius: 14px; padding: 26px 30px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    }
+    .overlay-box h2 { color: var(--accent); text-align: center; font-size: 22px; margin-bottom: 18px; }
+    .overlay-box h3 { color: var(--h2); font-size: 15px; margin: 14px 0 6px; }
+    .overlay-box .row { display: grid; grid-template-columns: 180px 1fr; gap: 10px; margin: 4px 0; font-size: 14px; }
+    .overlay-box .row .k { color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; }
+    .overlay-box .note-block { margin: 10px 0; font-size: 15px; line-height: 1.5; }
+
+    /* ---- Écran noir / blanc ---- */
+    .screen-black, .screen-white {
+      position: fixed; inset: 0; z-index: 90;
+    }
+    .screen-black { background: #000; }
+    .screen-white { background: #fff; }
+
+    /* ---- Laser pointer ---- */
+    .laser-canvas {
+      position: fixed; inset: 0; z-index: 100;
+      pointer-events: none;
+    }
+    body.laser-on { cursor: none; }
+
+    /* ---- Overview / mosaïque ---- */
+    .overview-mode .slide { pointer-events: none; }
+    .overview-grid {
+      position: fixed; z-index: 50;
+      display: none;
+      overflow: auto;
+    }
+    .overview-mode .overview-grid { display: block; }
+    .overview-mode .deck .slide { transition: none; }
+    .overview-thumb {
+      position: relative;
+      background: var(--bg);
+      border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+      border-radius: 6px; overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .overview-thumb:hover { border-color: var(--accent); }
+    .overview-thumb.current { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+    .overview-thumb .num {
+      position: absolute; left: 6px; bottom: 4px;
+      color: var(--muted); font-size: 11px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      pointer-events: none;
+    }
+    .overview-thumb iframe { display: block; border: 0; pointer-events: none; }
     table { border-collapse: collapse; margin: 0.5em auto; font-size: var(--font-size); }
     table th, table td { padding: 0.5em 0.9em; }
     table th {
@@ -241,6 +331,24 @@
   </style>
 </head>
 <body class="theme-dark t-fade">
+  <div class="p-bar p-bar-top hidden" id="topbar">
+    <div class="col left" id="topbar-left"></div>
+    <div class="col center" id="topbar-center"></div>
+    <div class="col right" id="topbar-right"></div>
+  </div>
+  <div class="progress-bar" id="progbar" style="width: 0%"></div>
+  <div class="p-bar p-bar-bottom" id="pbar">
+    <div class="col left" id="pbar-left"></div>
+    <div class="col center" id="pbar-center">O : vue  ·  L : laser  ·  B/W : noir/blanc  ·  ? : aide</div>
+    <div class="col right" id="pbar-right"><span id="pbar-slide"></span></div>
+  </div>
+  <div class="overlay" id="help-overlay"><div class="overlay-box" id="help-box"></div></div>
+  <div class="overlay" id="notes-overlay"><div class="overlay-box" id="notes-box"></div></div>
+  <div class="screen-black" id="black-screen" hidden></div>
+  <div class="screen-white" id="white-screen" hidden></div>
+  <canvas class="laser-canvas" id="laser" hidden></canvas>
+  <div class="overview-grid" id="overview"></div>
+
   <script type="text/plain" id="deck-embed">__MSM_EMBED_PLACEHOLDER_53a8b__</script>
   <script type="module">
     // Mermaid : import depuis CDN. Si offline, les blocs mermaid restent en texte brut.
@@ -252,7 +360,6 @@
     }
   </script>
   <div class="deck" id="deck"></div>
-  <div class="index" id="idx"></div>
   <div class="welcome" id="welcome">
     <div>
       <h1>mSM</h1>
@@ -308,7 +415,16 @@
   function parseSlide(lines) {
     const els = [];
     const slideMeta = {};
+    const notes = [];
     let inCode = false, codeBuf = null, codeLang = null, tableBuf = null;
+    let commentBuf = null, inComment = false;
+    const storeComment = (content) => {
+      content = (content || "").trim();
+      if (!content) return;
+      const mkv = content.match(/^([\w_-]+)\s*:\s*(.*)$/);
+      if (mkv && !content.includes("\n")) slideMeta[mkv[1]] = mkv[2];
+      else notes.push(content);
+    };
     const flushTable = () => {
       if (!tableBuf || !tableBuf.length) return;
       const header = parsePipeRow(tableBuf[0]);
@@ -322,8 +438,26 @@
       tableBuf = null;
     };
     for (const line of lines) {
-      const mtag = line.match(/^\s*<!--\s*([\w_-]+)\s*:\s*(.+?)\s*-->\s*$/);
-      if (mtag) { slideMeta[mtag[1]] = mtag[2]; continue; }
+      // commentaires HTML : soit meta (key:value), soit notes de speaker
+      if (inComment) {
+        const closeIdx = line.indexOf("-->");
+        if (closeIdx >= 0) {
+          commentBuf.push(line.slice(0, closeIdx));
+          storeComment(commentBuf.join("\n"));
+          commentBuf = null; inComment = false;
+        } else {
+          commentBuf.push(line);
+        }
+        continue;
+      }
+      const single = line.match(/^\s*<!--\s*([\s\S]*?)\s*-->\s*$/);
+      if (single) { storeComment(single[1]); continue; }
+      if (/^\s*<!--/.test(line)) {
+        commentBuf = []; inComment = true;
+        const starter = line.replace(/^\s*<!--\s*/, "");
+        if (starter) commentBuf.push(starter);
+        continue;
+      }
       if (/^```/.test(line)) {
         flushTable();
         if (inCode) {
@@ -354,6 +488,7 @@
     while (els[0] && els[0].type === "space") els.shift();
     while (els.length && els[els.length - 1].type === "space") els.pop();
     els.meta = slideMeta;
+    els.notes = notes;
     return els;
   }
 
@@ -410,6 +545,248 @@
   let current = 0;
   let overflowMode = "shrink";
   let minScale = 0.45;
+  let parsedSlides = [];
+  let presentationStart = Date.now();
+  let slideStart = Date.now();
+  let helpOpen = false, notesOpen = false, overviewOpen = false;
+  let blackOn = false, whiteOn = false, laserOn = false;
+  let autoOn = false, autoDefault = 0, autoTimer = null;
+  let laserTrail = [], laserRaf = null;
+
+  // ---------- présenter bar : hint + timers ----------
+  function updateHint() {
+    const el = document.getElementById("pbar-center");
+    if (overviewOpen) { el.textContent = "Esc / O : retour"; return; }
+    if (autoOn) {
+      const iv = slideAutoInterval() || autoDefault;
+      el.textContent = "AUTO " + (iv ? iv + "s  " : "") + "·  A : stop  ·  ? : aide";
+      return;
+    }
+    el.textContent = "O : vue  ·  L : laser  ·  C : notes  ·  B/W : noir/blanc  ·  A : auto  ·  ? : aide";
+  }
+  function fmt(t) {
+    t = Math.max(0, Math.floor(t / 1000));
+    const m = Math.floor(t / 60), s = t % 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+  function updatePresenterBar() {
+    const now = Date.now();
+    const elapsed = fmt(now - presentationStart);
+    const onSlide = fmt(now - slideStart);
+    const clock = new Date().toTimeString().slice(0, 5);
+    document.getElementById("pbar-left").textContent =
+      elapsed + "  ·  slide " + onSlide + "  ·  " + clock;
+  }
+  function updateProgressBar() {
+    const p = slidesCount > 0 ? ((current + 1) / slidesCount) * 100 : 0;
+    document.getElementById("progbar").style.width = p + "%";
+  }
+  function updateTopBar() {}  // top bar filled in applyMeta, no-op here
+
+  // ---------- écran noir / blanc ----------
+  function toggleBlack() {
+    blackOn = !blackOn;
+    document.getElementById("black-screen").hidden = !blackOn;
+    if (blackOn && whiteOn) toggleWhite();
+  }
+  function toggleWhite() {
+    whiteOn = !whiteOn;
+    document.getElementById("white-screen").hidden = !whiteOn;
+    if (whiteOn && blackOn) toggleBlack();
+  }
+
+  // ---------- overlay aide ----------
+  const HELP_SECTIONS = [
+    { title: "Navigation", items: [
+      ["→  /  Espace  /  Clic gauche", "slide suivante"],
+      ["←  /  ↑  /  Backspace",        "slide précédente"],
+      ["Home  /  End",                  "première / dernière"],
+    ]},
+    { title: "Vues", items: [
+      ["O",   "vue d'ensemble (mosaïque)"],
+      ["F",   "plein écran"],
+      ["B",   "écran noir"],
+      ["W",   "écran blanc"],
+      ["L",   "laser pointeur"],
+      ["C",   "notes de speaker"],
+      ["H ou ?", "cette aide"],
+    ]},
+    { title: "Auto-avance", items: [
+      ["A",             "toggle auto-avance"],
+      ["auto: N",       "(frontmatter) intervalle en secondes"],
+      ["<!-- auto: N -->", "override par slide"],
+    ]},
+  ];
+  function renderHelp() {
+    const box = document.getElementById("help-box");
+    let html = "<h2>Raccourcis mSM</h2>";
+    for (const sec of HELP_SECTIONS) {
+      html += `<h3>${sec.title}</h3>`;
+      for (const [k, v] of sec.items) {
+        html += `<div class="row"><span class="k">${k}</span><span>${v}</span></div>`;
+      }
+    }
+    box.innerHTML = html;
+  }
+  function toggleHelp() {
+    if (notesOpen) toggleNotes();
+    helpOpen = !helpOpen;
+    if (helpOpen) renderHelp();
+    document.getElementById("help-overlay").classList.toggle("visible", helpOpen);
+  }
+
+  // ---------- overlay notes ----------
+  function renderNotes() {
+    const box = document.getElementById("notes-box");
+    const slide = parsedSlides[current];
+    const notes = (slide && slide.notes) || [];
+    let html = `<h2>Notes de speaker  ·  slide ${current + 1}/${slidesCount}</h2>`;
+    if (notes.length === 0) {
+      html += `<div class="note-block" style="opacity:.6">(aucune note pour cette slide)</div>`;
+    } else {
+      for (const n of notes) {
+        html += `<div class="note-block">${inlineMD(n).replace(/\n/g, "<br>")}</div>`;
+      }
+    }
+    box.innerHTML = html;
+  }
+  function toggleNotes() {
+    if (helpOpen) toggleHelp();
+    notesOpen = !notesOpen;
+    if (notesOpen) renderNotes();
+    document.getElementById("notes-overlay").classList.toggle("visible", notesOpen);
+  }
+
+  // ---------- auto-avance ----------
+  function slideAutoInterval() {
+    const s = parsedSlides[current];
+    return (s && s.meta && parseFloat(s.meta.auto)) || 0;
+  }
+  function scheduleAuto() {
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    if (!autoOn || overviewOpen || helpOpen || notesOpen || blackOn || whiteOn) return;
+    const iv = slideAutoInterval() || autoDefault;
+    if (iv <= 0) return;
+    autoTimer = setTimeout(() => {
+      const nxt = (current + 1) >= slidesCount ? 0 : current + 1;
+      go(nxt);
+      scheduleAuto();
+    }, iv * 1000);
+  }
+  function toggleAuto() {
+    autoOn = !autoOn;
+    updateHint();
+    scheduleAuto();
+  }
+
+  // ---------- laser pointer ----------
+  function toggleLaser() {
+    laserOn = !laserOn;
+    const canv = document.getElementById("laser");
+    canv.hidden = !laserOn;
+    document.body.classList.toggle("laser-on", laserOn);
+    laserTrail = [];
+    if (laserOn) {
+      canv.width = window.innerWidth * devicePixelRatio;
+      canv.height = window.innerHeight * devicePixelRatio;
+      canv.style.width = window.innerWidth + "px";
+      canv.style.height = window.innerHeight + "px";
+      startLaserLoop();
+    } else if (laserRaf) {
+      cancelAnimationFrame(laserRaf); laserRaf = null;
+    }
+  }
+  function startLaserLoop() {
+    const canv = document.getElementById("laser");
+    const ctx = canv.getContext("2d");
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    let lastX = 0, lastY = 0;
+    const onMove = (e) => { lastX = e.clientX; lastY = e.clientY; };
+    window.addEventListener("mousemove", onMove);
+    const draw = () => {
+      if (!laserOn) { window.removeEventListener("mousemove", onMove); return; }
+      const now = performance.now();
+      laserTrail.push({ x: lastX, y: lastY, t: now });
+      while (laserTrail.length && now - laserTrail[0].t > 1200) laserTrail.shift();
+      ctx.clearRect(0, 0, canv.width, canv.height);
+      for (const p of laserTrail) {
+        const a = Math.max(0, 1 - (now - p.t) / 1200);
+        ctx.fillStyle = `rgba(255, 40, 50, ${a * 0.5})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.beginPath(); ctx.arc(lastX, lastY, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "rgba(255, 40, 50, 0.95)";
+      ctx.beginPath(); ctx.arc(lastX, lastY, 8, 0, Math.PI * 2); ctx.fill();
+      laserRaf = requestAnimationFrame(draw);
+    };
+    draw();
+  }
+
+  // ---------- overview / mosaïque ----------
+  function refreshOverviewSelection() {
+    document.querySelectorAll(".overview-thumb").forEach((t, i) => {
+      t.classList.toggle("current", i === current);
+    });
+  }
+  function toggleOverview() {
+    overviewOpen = !overviewOpen;
+    document.body.classList.toggle("overview-mode", overviewOpen);
+    const grid = document.getElementById("overview");
+    if (!overviewOpen) { grid.innerHTML = ""; grid.style.display = "none"; updateHint(); return; }
+    // Build mosaïque : clone chaque slide, scale down via CSS
+    const n = slidesCount;
+    if (!n) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const topH = document.getElementById("topbar").classList.contains("hidden") ? 0 : 32;
+    const usableH = H - 32 - topH;
+    const cols = Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * (W / Math.max(1, usableH))))));
+    const rows = Math.ceil(n / cols);
+    const cellW = W / cols, cellH = usableH / rows;
+    grid.style.top = topH + "px";
+    grid.style.left = "0";
+    grid.style.width = W + "px";
+    grid.style.height = usableH + "px";
+    grid.style.background = "var(--bg)";
+    grid.innerHTML = "";
+    const sects = document.querySelectorAll(".slide");
+    sects.forEach((sec, i) => {
+      const t = document.createElement("div");
+      t.className = "overview-thumb" + (i === current ? " current" : "");
+      const pad = 8;
+      t.style.position = "absolute";
+      t.style.left = ((i % cols) * cellW + pad) + "px";
+      t.style.top  = (Math.floor(i / cols) * cellH + pad) + "px";
+      t.style.width  = (cellW - pad * 2) + "px";
+      t.style.height = (cellH - pad * 2) + "px";
+      // Clone du .content de la slide et scale
+      const content = sec.querySelector(".content");
+      if (content) {
+        const inner = document.createElement("div");
+        const sw = (cellW - pad * 2) / W;
+        const sh = (cellH - pad * 2) / H;
+        const s = Math.min(sw, sh);
+        inner.style.transform = `scale(${s})`;
+        inner.style.transformOrigin = "top left";
+        inner.style.width = W + "px";
+        inner.style.height = H + "px";
+        inner.style.padding = "var(--padding)";
+        inner.style.boxSizing = "border-box";
+        inner.style.pointerEvents = "none";
+        inner.style.color = "var(--fg)";
+        inner.innerHTML = content.innerHTML;
+        t.appendChild(inner);
+      }
+      const num = document.createElement("div");
+      num.className = "num";
+      num.textContent = String(i + 1);
+      t.appendChild(num);
+      t.addEventListener("click", () => { toggleOverview(); go(i); });
+      grid.appendChild(t);
+    });
+    grid.style.display = "block";
+    updateHint();
+  }
 
   function resolveSrc(src) {
     if (/^(https?:|data:|blob:|\/)/i.test(src)) return src;
@@ -431,16 +808,30 @@
     applyBodyMotion(deckMotion);
     if (meta.animate !== "none") body.classList.add("animate-stagger");
     if (meta.kenburns !== "false" && meta.kenburns !== false) body.classList.add("kenburns-on");
-    // logo : enlève l'ancien puis ajoute le nouveau si présent
-    const old = document.querySelector(".deck-logo");
-    if (old) old.remove();
+    // logo : dans la barre du bas, à droite (à côté du numéro de slide)
+    const pbarRight = document.getElementById("pbar-right");
+    const existingLogo = pbarRight.querySelector(".logo-in-bar");
+    if (existingLogo) existingLogo.remove();
     if (meta.logo) {
       const img = document.createElement("img");
-      img.className = "deck-logo";
+      img.className = "logo-in-bar";
       img.src = resolveSrc(meta.logo);
       img.onerror = () => img.remove();
-      document.body.appendChild(img);
+      pbarRight.appendChild(img);
     }
+    // top bar : 3 slots. Cachée si les 3 sont vides
+    const topL = (meta.topLeft ?? "").trim();
+    const topC = (meta.topCenter ?? "").trim();
+    const topR = (meta.topRight ?? "").trim();
+    const topbar = document.getElementById("topbar");
+    document.getElementById("topbar-left").textContent = topL;
+    document.getElementById("topbar-center").textContent = topC;
+    document.getElementById("topbar-right").textContent = topR;
+    topbar.classList.toggle("hidden", !(topL || topC || topR));
+    // auto-avance : depuis meta.auto (secondes)
+    autoDefault = parseFloat(meta.auto) || 0;
+    autoOn = autoDefault > 0;
+    updateHint();
     const root = document.documentElement.style;
     const set = (k, v, unit = "") => v != null && v !== "" && root.setProperty(k, v + unit);
     set("--bg", meta.background);
@@ -546,6 +937,7 @@
   }
 
   function renderDeck(slides) {
+    parsedSlides = slides;
     const deck = document.getElementById("deck");
     deck.innerHTML = "";
     slides.forEach(s => deck.appendChild(renderSlide(s)));
@@ -601,10 +993,14 @@
       if (i === n) s.classList.add("current");
       else if (i < n) s.classList.add("past");
     });
-    document.getElementById("idx").textContent = (n + 1) + " / " + slidesCount;
+    document.getElementById("pbar-slide").textContent = (n + 1) + " / " + slidesCount;
     // motion par slide : override via data-motion sinon retombe au deck-level
     applyBodyMotion(sects[n].dataset.motion || deckMotion);
     requestAnimationFrame(() => applyOverflow(sects[n]));
+    slideStart = Date.now();
+    updateProgressBar();
+    if (notesOpen) renderNotes();
+    if (overviewOpen) refreshOverviewSelection();
   }
 
   // ---------- loading ----------
@@ -630,10 +1026,14 @@
         s.classList.remove("current", "past", "instant");
         if (i === 0) s.classList.add("current");
       });
-      document.getElementById("idx").textContent = "1 / " + slidesCount;
+      document.getElementById("pbar-slide").textContent = "1 / " + slidesCount;
       const first = document.querySelector(".slide.current");
       if (first) applyBodyMotion(first.dataset.motion || deckMotion);
       requestAnimationFrame(() => applyOverflow(first));
+      presentationStart = Date.now();
+      slideStart = Date.now();
+      updateProgressBar();
+      updateTopBar();
     } catch (e) {
       showWelcome("Erreur de parsing : " + e.message);
     }
@@ -665,13 +1065,35 @@
   // ---------- input ----------
   window.addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Sortie prioritaire des overlays / modes
+    if (helpOpen && (e.key === "Escape" || e.key === "h" || e.key === "H" || e.key === "?")) {
+      toggleHelp(); e.preventDefault(); return;
+    }
+    if (notesOpen && (e.key === "Escape" || e.key === "c" || e.key === "C")) {
+      toggleNotes(); e.preventDefault(); return;
+    }
+    if (blackOn) {
+      toggleBlack();
+      if (["ArrowRight", "ArrowDown", " ", "Enter"].includes(e.key)) go(current + 1);
+      else if (["ArrowLeft", "ArrowUp", "Backspace"].includes(e.key)) go(current - 1);
+      e.preventDefault(); return;
+    }
+    if (whiteOn) {
+      toggleWhite();
+      if (["ArrowRight", "ArrowDown", " ", "Enter"].includes(e.key)) go(current + 1);
+      else if (["ArrowLeft", "ArrowUp", "Backspace"].includes(e.key)) go(current - 1);
+      e.preventDefault(); return;
+    }
+    if (overviewOpen && (e.key === "Escape" || e.key === "o" || e.key === "O")) {
+      toggleOverview(); e.preventDefault(); return;
+    }
     switch (e.key) {
       case "ArrowRight": case "PageDown": case " ": case "Enter": case "ArrowDown":
-        go(current + 1); e.preventDefault(); break;
+        go(current + 1); scheduleAuto(); e.preventDefault(); break;
       case "ArrowLeft": case "PageUp": case "Backspace": case "ArrowUp":
-        go(current - 1); e.preventDefault(); break;
-      case "Home": go(0); e.preventDefault(); break;
-      case "End": go(slidesCount - 1); e.preventDefault(); break;
+        go(current - 1); scheduleAuto(); e.preventDefault(); break;
+      case "Home": go(0); scheduleAuto(); e.preventDefault(); break;
+      case "End": go(slidesCount - 1); scheduleAuto(); e.preventDefault(); break;
       case "f": case "F":
         if (!document.fullscreenElement) document.documentElement.requestFullscreen();
         else document.exitFullscreen();
@@ -682,6 +1104,14 @@
         if (deck) loadFromURL(deck);
         e.preventDefault(); break;
       }
+      case "o": case "O": toggleOverview(); e.preventDefault(); break;
+      case "b": case "B": toggleBlack(); e.preventDefault(); break;
+      case "w": case "W": toggleWhite(); e.preventDefault(); break;
+      case "l": case "L": toggleLaser(); e.preventDefault(); break;
+      case "c": case "C": toggleNotes(); e.preventDefault(); break;
+      case "a": case "A": toggleAuto(); e.preventDefault(); break;
+      case "h": case "H": case "?":
+        toggleHelp(); e.preventDefault(); break;
     }
   });
 
@@ -727,6 +1157,20 @@
   });
 
   // ---------- init ----------
+  // Boucle qui met à jour la barre présentateur (timers) 2× par seconde
+  setInterval(updatePresenterBar, 500);
+  updatePresenterBar();
+  window.addEventListener("resize", () => {
+    if (laserOn) {
+      const canv = document.getElementById("laser");
+      canv.width = window.innerWidth * devicePixelRatio;
+      canv.height = window.innerHeight * devicePixelRatio;
+      canv.style.width = window.innerWidth + "px";
+      canv.style.height = window.innerHeight + "px";
+    }
+    if (overviewOpen) { toggleOverview(); toggleOverview(); }
+  });
+
   const params = new URLSearchParams(location.search);
   const deckParam = params.get("deck");
   const embedEl = document.getElementById("deck-embed");
