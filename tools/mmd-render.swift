@@ -220,7 +220,7 @@ if effectiveType == "text" {
 <html><head><meta charset="UTF-8">
 <style>
 body { margin: 0; padding: 0; background: transparent;
-       font: \(textSize)px -apple-system, "Helvetica Neue", sans-serif;
+       font: \(textSize)px Arial, "Helvetica Neue", sans-serif;
        color: \(textColor);
        white-space: pre-wrap; word-wrap: break-word;
        display: inline-block; max-width: \(maxW)px; }

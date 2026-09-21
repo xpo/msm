@@ -622,6 +622,11 @@ local function apply_theme()
   fonts.h1    = lfs(family.r, theme.titleSize)
   fonts.h2    = lfs(family.r, math.floor(theme.titleSize * 0.68))
   fonts.h3    = lfs(family.r, math.floor(theme.titleSize * 0.48))
+  -- Tailles en pixels effectifs (pour matcher côté CSS lors du rendu emoji)
+  fonts.text_size = theme.fontSize
+  fonts.h1_size   = theme.titleSize
+  fonts.h2_size   = math.floor(theme.titleSize * 0.68)
+  fonts.h3_size   = math.floor(theme.titleSize * 0.48)
   -- Police monospace réelle pour les blocs de code (sinon les arbres ascii,
   -- les indentations et l'alignement colonne ne tiennent pas).
   local mono_candidates = {
@@ -844,7 +849,10 @@ local function layout_slide(slide, maxW, maxH)
         if el.type == "h3" then color = theme.h3 end
         if el.type == "note" then color = theme.note end
         if el.type == "quote" then color = theme.muted end
-        local size = math.floor(base_font:getHeight() * 0.85)
+        local size = fonts.text_size or 34
+        if el.type == "h1" then size = fonts.h1_size or size end
+        if el.type == "h2" then size = fonts.h2_size or size end
+        if el.type == "h3" then size = fonts.h3_size or size end
         local png = ensure_emoji_png(text, size, color_to_hex(color), inner_w)
         if png then
           local tex = load_image(png)
