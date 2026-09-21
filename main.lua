@@ -408,6 +408,50 @@ local function md5_string(s)
   return res:sub(1, 16)
 end
 
+-- Détection emoji : couvre les grandes plages Unicode d'emojis/symboles
+local function has_emoji(s)
+  if not s or s == "" then return false end
+  for _, c in utf8.codes(s) do
+    if (c >= 0x2600  and c <= 0x27BF)   -- Miscellaneous Symbols + Dingbats
+       or (c >= 0x1F300 and c <= 0x1FAFF) -- Emoticons, Symbols&Pictographs, Transport, Supplemental
+       or (c >= 0x1F000 and c <= 0x1F2FF) -- Mahjong, Domino, Playing Cards, Enclosed Alphanum
+       or (c >= 0x2300  and c <= 0x23FF)  -- Misc Technical (⚠ ⌘ ⌥ ...)
+       or c == 0x00A9 or c == 0x00AE      -- © ®
+    then return true end
+  end
+  return false
+end
+
+local function color_to_hex(c)
+  local r = math.floor((c[1] or 0) * 255 + 0.5)
+  local g = math.floor((c[2] or 0) * 255 + 0.5)
+  local b = math.floor((c[3] or 0) * 255 + 0.5)
+  return string.format("#%02x%02x%02x", r, g, b)
+end
+
+-- Rend une ligne texte (avec emojis colorés) en PNG via mmd-render text mode.
+-- Cache par hash(text|size|color).
+local function ensure_emoji_png(text, size, color_hex, max_w)
+  local mmdr = find_mmdc()
+  if not mmdr or not mmdr:match("mmd%-render$") then return nil end
+  local cache_dir = deck_dir .. ".msm-emoji"
+  local key = md5_string(text .. "|" .. size .. "|" .. color_hex .. "|" .. max_w)
+  if not key then return nil end
+  local png = cache_dir .. "/" .. key .. ".png"
+  if path_exists(png) then return png end
+  os.execute("mkdir -p '" .. cache_dir:gsub("'", "'\\''") .. "'")
+  local tmp_in = os.tmpname() .. ".txt"
+  local f = io.open(tmp_in, "w"); if not f then return nil end
+  f:write(text); f:close()
+  local cmd = string.format(
+    "%q -i %q -o %q -t text -s %d -c %q -w %d 2>&1",
+    mmdr, tmp_in, png, size, color_hex, max_w)
+  local h = io.popen(cmd)
+  if h then h:read("*a"); h:close() end
+  os.remove(tmp_in)
+  return path_exists(png) and png or nil
+end
+
 local function ensure_mermaid_png(src, out_path)
   if path_exists(out_path) then return true end
   local mmdc = find_mmdc()
@@ -755,6 +799,34 @@ local function layout_slide(slide, maxW, maxH)
       local text = el.text or ""
       if el.type == "bullet" then text = "•  " .. text end
       if el.type == "quote" then text = "“ " .. text .. " ”" end
+
+      -- Emojis : LOVE ne rend pas les glyphes couleur (Apple Color Emoji fait
+      -- planter FT_Load_Glyph). Route la ligne via mmd-render (WKWebView) →
+      -- PNG caché, dessin d'image à la place du texte inline.
+      if has_emoji(text) then
+        local color = theme.color
+        if el.type == "h1" then color = theme.accent end
+        if el.type == "h2" then color = theme.h2 end
+        if el.type == "h3" then color = theme.h3 end
+        if el.type == "note" then color = theme.note end
+        if el.type == "quote" then color = theme.muted end
+        local size = math.floor(base_font:getHeight() * 0.85)
+        local png = ensure_emoji_png(text, size, color_to_hex(color), inner_w)
+        if png then
+          local tex = load_image(png)
+          if tex then
+            item.emoji_tex = tex
+            local iw, ih = tex:getDimensions()
+            item.emoji_scale = math.min(inner_w / iw, 1)
+            item.h = ih * item.emoji_scale
+            item.inner_w = inner_w
+            total_h = total_h + item.h + space
+            table.insert(items, item)
+            goto next_el
+          end
+        end
+      end
+
       item.runs = inline.parse(text)
       item.layout = inline.layout(item.runs, function(run)
         if run.c then return fonts.code, false, false end
@@ -784,6 +856,7 @@ local function layout_slide(slide, maxW, maxH)
     end
     total_h = total_h + item.h + space
     table.insert(items, item)
+    ::next_el::
   end
   return items, total_h - space
 end
@@ -912,14 +985,27 @@ local function draw_slide(idx, alpha, offX, offY)
       elseif el.type == "quote" then
         love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], a * 0.6)
         love.graphics.rectangle("fill", pad, yy, 4, it.h)
-        inline.draw(it.layout, pad + 20, yy, it.inner_w, theme.align, theme.muted, theme.accent, a)
+        if it.emoji_tex then
+          love.graphics.setColor(1, 1, 1, a)
+          love.graphics.draw(it.emoji_tex, pad + 20, yy, 0, it.emoji_scale, it.emoji_scale)
+        else
+          inline.draw(it.layout, pad + 20, yy, it.inner_w, theme.align, theme.muted, theme.accent, a)
+        end
       else
-        local c = theme.color
-        if el.type == "h1" then c = theme.accent end
-        if el.type == "h2" then c = theme.h2 end
-        if el.type == "h3" then c = theme.h3 end
-        if el.type == "note" then c = theme.note end
-        inline.draw(it.layout, pad + (it.indent_px or 0), yy, it.inner_w, theme.align, c, theme.accent, a)
+        if it.emoji_tex then
+          -- Ligne rendue en PNG car elle contient des emojis (LOVE ne rend
+          -- pas les glyphes couleur), on la dessine tel quel.
+          love.graphics.setColor(1, 1, 1, a)
+          love.graphics.draw(it.emoji_tex,
+            pad + (it.indent_px or 0), yy, 0, it.emoji_scale, it.emoji_scale)
+        else
+          local c = theme.color
+          if el.type == "h1" then c = theme.accent end
+          if el.type == "h2" then c = theme.h2 end
+          if el.type == "h3" then c = theme.h3 end
+          if el.type == "note" then c = theme.note end
+          inline.draw(it.layout, pad + (it.indent_px or 0), yy, it.inner_w, theme.align, c, theme.accent, a)
+        end
       end
     end
     y = y + it.h + theme.lineSpace

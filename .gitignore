@@ -15,6 +15,9 @@ sl-*
 # Cache SVG (rasterisations qlmanage à côté du deck, régénérées à la demande)
 .msm-svg/
 
+# Cache emoji (lignes texte rendues via mmd-render WKWebView, régénérées à la demande)
+.msm-emoji/
+
 # Mermaid.js bundle (téléchargé par package-mac.sh, 3 Mo)
 tools/mermaid.min.js
 

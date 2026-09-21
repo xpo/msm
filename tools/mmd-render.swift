@@ -13,17 +13,23 @@ import WebKit
 final class Renderer: NSObject, WKNavigationDelegate {
     let outPath: String
     let width: Int
+    let mode: String
     var window: NSWindow!
     var webView: WKWebView!
 
-    init(html: String, width: Int, outPath: String) {
+    init(html: String, width: Int, outPath: String, mode: String = "mermaid") {
         self.outPath = outPath
         self.width = width
+        self.mode = mode
         super.init()
         let rect = NSRect(x: 0, y: 0, width: width, height: width)
         let config = WKWebViewConfiguration()
         self.webView = WKWebView(frame: rect, configuration: config)
         self.webView.navigationDelegate = self
+        // Fond transparent : WKWebView macOS dessine du blanc par défaut ;
+        // on force à ne pas dessiner le background page pour que le snapshot
+        // sorte avec un alpha correct (essentiel pour compositer sur mSM slide).
+        self.webView.setValue(false, forKey: "drawsBackground")
         // Fenêtre off-screen, transparente, sans bordure.
         self.window = NSWindow(
             contentRect: rect,
@@ -39,7 +45,11 @@ final class Renderer: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        pollForSVG(attempts: 100)
+        if mode == "text" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { self.measure() }
+        } else {
+            pollForSVG(attempts: 100)
+        }
     }
 
     func pollForSVG(attempts: Int) {
@@ -57,10 +67,12 @@ final class Renderer: NSObject, WKNavigationDelegate {
     }
 
     func measure() {
+        let selector = mode == "text" ? "body" : "svg"
         let js = """
         (function() {
-          var svg = document.querySelector('svg');
-          var r = svg.getBoundingClientRect();
+          var e = document.querySelector('\(selector)');
+          if (!e) return '';
+          var r = e.getBoundingClientRect();
           return JSON.stringify({ w: Math.ceil(r.right + 8), h: Math.ceil(r.bottom + 8) });
         })();
         """
@@ -170,12 +182,52 @@ guard !mermaidJS.isEmpty else {
 }
 
 // ---- HTML ----
-// Détection SVG : soit XML declaration, soit balise <svg racine
+// Types détectés : SVG (racine <?xml ou <svg), text (mode explicite via -t text),
+// Mermaid (défaut).
 let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 let isSvg = trimmed.hasPrefix("<?xml") || trimmed.hasPrefix("<svg")
 
+// Args supplémentaires : -t (type: text|svg|mermaid), -c (couleur hex #rrggbb), -s (font-size)
+var forcedType: String? = nil
+var textColor = "#ffffff"
+var textSize = 40
+do {
+    let a = CommandLine.arguments
+    var j = 1
+    while j < a.count {
+        if a[j] == "-t", j + 1 < a.count { forcedType = a[j + 1]; j += 2; continue }
+        if a[j] == "-c", j + 1 < a.count { textColor = a[j + 1]; j += 2; continue }
+        if a[j] == "-s", j + 1 < a.count, let n = Int(a[j + 1]) { textSize = n; j += 2; continue }
+        j += 1
+    }
+}
+
+let effectiveType: String
+if let f = forcedType { effectiveType = f }
+else if isSvg { effectiveType = "svg" }
+else { effectiveType = "mermaid" }
+
 let html: String
-if isSvg {
+if effectiveType == "text" {
+    // Mode texte : rendu HTML avec système font (rend les emojis couleur nativement)
+    let escaped = source
+        .replacingOccurrences(of: "&", with: "&amp;")
+        .replacingOccurrences(of: "<", with: "&lt;")
+        .replacingOccurrences(of: ">", with: "&gt;")
+    let maxW = width
+    html = """
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+body { margin: 0; padding: 0; background: transparent;
+       font: \(textSize)px -apple-system, "Helvetica Neue", sans-serif;
+       color: \(textColor);
+       white-space: pre-wrap; word-wrap: break-word;
+       display: inline-block; max-width: \(maxW)px; }
+</style>
+</head><body>\(escaped)</body></html>
+"""
+} else if effectiveType == "svg" {
     // SVG brut : embed direct, WKWebView respecte le viewBox
     html = """
 <!DOCTYPE html>
@@ -208,6 +260,6 @@ svg{display:block;}</style>
 // ---- run ----
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-let renderer = Renderer(html: html, width: width, outPath: outputPath)
+let renderer = Renderer(html: html, width: width, outPath: outputPath, mode: effectiveType)
 _ = renderer
 app.run()
