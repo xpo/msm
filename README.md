@@ -176,6 +176,7 @@ Un preset définit six couleurs (`background`, `color`, `accent`, `h2`, `h3`, `m
 | `![alt](path)`    | Image centrée, adaptée à la taille de la slide         |
 | `\| a \| b \|`    | Table (header, séparateur, lignes)                     |
 | ` ```mermaid ` … | Diagramme Mermaid (flowchart, sequence, gantt, etc.)    |
+| `<!-- bleed: true -->` | Slide sans padding, image ou contenu à fond perdu (bord à bord) |
 | `**gras**`        | Gras                                                   |
 | `*italique*`      | Italique                                               |
 | `` `code` ``      | Code inline (fond teinté)                              |

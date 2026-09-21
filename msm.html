@@ -87,6 +87,10 @@
       margin-bottom: 0.4em; text-align: left;
     }
     img { max-width: 100%; max-height: 70vh; display: block; margin: 0.4em auto; object-fit: contain; }
+    /* Slide bleed / fullscreen : image ou contenu unique fille toute la vue */
+    .slide.bleed { padding: 0; }
+    .slide.bleed .content { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+    .slide.bleed img { max-width: 100%; max-height: 100%; width: auto; height: auto; margin: 0; }
     strong { font-weight: 700; }
     em { font-style: italic; }
     s { opacity: 0.65; }
@@ -856,6 +860,9 @@
     const sec = document.createElement("section");
     sec.className = "slide";
     if (slide.meta && slide.meta.motion) sec.dataset.motion = slide.meta.motion;
+    if (slide.meta && (slide.meta.bleed === "true" || slide.meta.fullscreen === "true")) {
+      sec.classList.add("bleed");
+    }
     const content = document.createElement("div");
     content.className = "content";
     let curList = null;

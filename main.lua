@@ -714,11 +714,14 @@ end
 local function layout_slide(slide, maxW, maxH)
   local items, total_h = {}, 0
   local space = theme.lineSpace
+  local bleed = slide.meta and (slide.meta.bleed == "true" or slide.meta.fullscreen == "true")
   for _, el in ipairs(slide) do
     local item = { el = el }
     if (el.type == "image" or el.type == "mermaid") and el.texture then
       local iw, ih = el.texture:getDimensions()
-      local s = math.min(maxW / iw, (maxH * 0.75) / ih, 1)
+      local h_factor = bleed and 1.0 or 0.75
+      local max_scale = bleed and math.huge or 1
+      local s = math.min(maxW / iw, (maxH * h_factor) / ih, max_scale)
       item.w, item.h, item.scale = iw * s, ih * s, s
     elseif el.type == "table" then
       item.tbl = layout_table(el, maxW)
@@ -831,7 +834,8 @@ end
 local function draw_slide(idx, alpha, offX, offY)
   local slide = slides[idx]; if not slide then return end
   local W, H = love.graphics.getDimensions()
-  local pad = theme.padding
+  local bleed = slide.meta and (slide.meta.bleed == "true" or slide.meta.fullscreen == "true")
+  local pad = bleed and 0 or theme.padding
   local maxW, maxH = W - pad * 2, H - pad * 2
   local items, total = layout_slide(slide, maxW, maxH)
 
