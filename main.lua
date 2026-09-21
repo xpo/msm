@@ -699,23 +699,55 @@ local function load_deck(path, preserve_position)
   love.window.setTitle("mSM — " .. (path:match("([^/\\]+)$") or path))
 end
 
+-- Résolveur de font pour l'inline markdown dans les cellules de table.
+-- Utilise fonts.text_b/i/bi si disponibles, sinon fallback avec simulation.
+local function table_font_resolver(run)
+  if run.c then return fonts.code, false, false end
+  if run.b and run.i then
+    if fonts.text_bi then return fonts.text_bi, false, false end
+    if fonts.text_b  then return fonts.text_b,  false, true  end
+    if fonts.text_i  then return fonts.text_i,  true,  false end
+    return fonts.text, true, true
+  end
+  if run.b then
+    if fonts.text_b then return fonts.text_b, false, false end
+    return fonts.text, true, false
+  end
+  if run.i then
+    if fonts.text_i then return fonts.text_i, false, false end
+    return fonts.text, false, true
+  end
+  return fonts.text, false, false
+end
+
 local function layout_table(el, maxW)
   local font = fonts.text
   local cellPad = 14
   local ncols = math.max(#el.header, 1)
+
+  -- Chaque cellule est un {runs, strip_text}. runs pour le rendu inline
+  -- (gras, italique, code, barré, lien), strip_text pour l'estimation de
+  -- largeur des colonnes.
+  local function make_cell(text)
+    local plain = filter_glyphs(inline.strip(text or ""), font)
+    return { runs = inline.parse(text or ""), plain = plain }
+  end
+
   local header = {}
-  for i = 1, ncols do header[i] = filter_glyphs(inline.strip(el.header[i] or ""), font) end
+  for i = 1, ncols do header[i] = make_cell(el.header[i] or "") end
   local rows = {}
   for ri, row in ipairs(el.rows) do
     local r = {}
-    for i = 1, ncols do r[i] = filter_glyphs(inline.strip(row[i] or ""), font) end
+    for i = 1, ncols do r[i] = make_cell(row[i] or "") end
     rows[ri] = r
   end
+
+  -- Largeur de colonne : basée sur le texte strippé (approximation correcte
+  -- puisque gras/italique n'affectent que peu la métrique horizontale).
   local colW = {}
   local function measure(cells)
     for i = 1, ncols do
-      local c = cells[i] or ""
-      local w = font:getWidth(c) + cellPad * 2
+      local w = font:getWidth(cells[i].plain) + cellPad * 2
       if not colW[i] or w > colW[i] then colW[i] = w end
     end
   end
@@ -730,11 +762,13 @@ local function layout_table(el, maxW)
     sum = maxW
   end
 
+  -- Hauteur des lignes : via inline.layout sur les runs de chaque cellule.
   local function row_h(cells)
     local mh = 0
     for i = 1, ncols do
-      local _, lines = font:getWrap(cells[i] or "", colW[i] - cellPad * 2)
-      mh = math.max(mh, #lines * font:getHeight())
+      local w_inner = colW[i] - cellPad * 2
+      cells[i].layout = inline.layout(cells[i].runs, table_font_resolver, w_inner, filter_glyphs)
+      if cells[i].layout.totalHeight > mh then mh = cells[i].layout.totalHeight end
     end
     return mh + cellPad
   end
@@ -866,18 +900,20 @@ local function draw_table(it, x0, y0, maxW, alpha)
   local el = it.el
   local sumW = tbl.sumW
   local x = x0 + tbl.offsetX
-  love.graphics.setFont(tbl.font)
 
+  -- Fond du header
   love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], alpha * 0.14)
   love.graphics.rectangle("fill", x, y0, sumW, tbl.headerH, 6, 6)
 
-  love.graphics.setColor(theme.accent[1], theme.accent[2], theme.accent[3], alpha)
+  -- Cellules du header : inline.draw pour respecter le formatting inline
+  -- (gras, italique, code, barré) puis appliquer la couleur accent.
   local cx = x
   for i = 1, tbl.ncols do
     local align = (el.aligns[i] or "left")
-    love.graphics.printf(tbl.header[i] or "",
+    inline.draw(tbl.header[i].layout,
       cx + tbl.cellPad, y0 + tbl.cellPad / 2,
-      tbl.colW[i] - tbl.cellPad * 2, align)
+      tbl.colW[i] - tbl.cellPad * 2, align,
+      theme.accent, theme.accent, alpha)
     cx = cx + tbl.colW[i]
   end
 
@@ -886,14 +922,13 @@ local function draw_table(it, x0, y0, maxW, alpha)
 
   local cy = y0 + tbl.headerH + 1
   for ri, row in ipairs(tbl.rows) do
-    love.graphics.setColor(theme.color[1], theme.color[2], theme.color[3], alpha)
-    love.graphics.setFont(tbl.font)
     local ccx = x
     for i = 1, tbl.ncols do
       local align = (el.aligns[i] or "left")
-      love.graphics.printf(row[i] or "",
+      inline.draw(row[i].layout,
         ccx + tbl.cellPad, cy + tbl.cellPad / 2,
-        tbl.colW[i] - tbl.cellPad * 2, align)
+        tbl.colW[i] - tbl.cellPad * 2, align,
+        theme.color, theme.accent, alpha)
       ccx = ccx + tbl.colW[i]
     end
     cy = cy + tbl.rowH[ri]
