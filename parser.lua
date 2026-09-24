@@ -178,6 +178,9 @@ local function is_hidden(slide)
   return v == "true" or v == true or v == "1"
 end
 
+-- Renvoie TOUTES les slides (cachées incluses), avec un flag .hidden sur
+-- chaque. Le filtrage se fait côté renderer selon l'état runtime : cela
+-- permet de basculer entre vue visible / vue cachée sans reparse.
 function M.parse(text)
   text = text:gsub("\r\n", "\n")
   local meta, body, raw_fm = parse_frontmatter(text)
@@ -186,7 +189,8 @@ function M.parse(text)
   local raw_slides = {}
   for _, lines in ipairs(raw) do
     local s = parse_slide(lines)
-    if #s > 0 and not is_hidden(s) then
+    if #s > 0 then
+      s.hidden = is_hidden(s)
       table.insert(slides, s)
       table.insert(raw_slides, table.concat(lines, "\n"))
     end

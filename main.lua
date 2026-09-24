@@ -25,6 +25,12 @@ local deck_dir = ""
 local meta, slides = {}, {}
 local raw_slides_src = {}
 local raw_fm_src = ""
+
+-- Toutes les slides (visibles + cachees), telles que renvoyees par le parser.
+-- `slides` / `raw_slides_src` sont un filtre derive selon `hidden_view`.
+local all_slides = {}
+local all_raw_slides_src = {}
+local hidden_view = false  -- false : slides visibles / true : slides cachees uniquement
 local fonts = {}
 local theme = {}
 
@@ -81,6 +87,11 @@ local HELP_SECTIONS = {
     { "Cmd-S",  "(en édition) enregistrer + sortir" },
     { "Tab",    "ouvrir le .md dans MarkEdit" },
     { "R",      "recharger le deck depuis disque" },
+  }},
+  { title = "Slides cachées", items = {
+    { "V",        "basculer vue normale / slides cachées uniquement" },
+    { "Shift-H",  "cacher la slide courante (ajoute <!-- hidden: true -->)" },
+    { "Shift-U",  "afficher à nouveau la slide courante" },
   }},
   { title = "Export et sortie", items = {
     { "E",      "exporter le deck en HTML autonome" },
@@ -653,7 +664,11 @@ end
 local function preload_images()
   local cache_dir = deck_dir .. ".msm-mermaid"
   local cache_created = false
-  for si, slide in ipairs(slides) do
+  -- Precharge sur all_slides pour que le toggle V vers la vue "cachees" ait
+  -- deja les images/mermaid en cache, meme si ces slides ne sont pas dans
+  -- le filtre courant.
+  local pool = all_slides and #all_slides > 0 and all_slides or slides
+  for si, slide in ipairs(pool) do
     for _, el in ipairs(slide) do
       if el.type == "image" then
         el.texture = load_image(el.src)
@@ -678,30 +693,86 @@ local function preload_images()
   end
 end
 
+-- Reconstruit `slides` / `raw_slides_src` a partir de all_* selon `hidden_view`.
+-- Pose `real_idx` sur chaque slide visible pour retrouver l'index dans all_*.
+local function rebuild_visible()
+  slides = {}
+  raw_slides_src = {}
+  for i, s in ipairs(all_slides) do
+    local include = hidden_view and s.hidden or (not hidden_view and not s.hidden)
+    if include then
+      s.real_idx = i
+      slides[#slides + 1] = s
+      raw_slides_src[#raw_slides_src + 1] = all_raw_slides_src[i]
+    end
+  end
+end
+
 local function load_deck(path, preserve_position)
   local text = read_bytes(path)
   if not text then
     print("mSM: cannot read " .. tostring(path))
     love.event.quit(1); return
   end
-  local saved = current
+  local saved_real = (slides[current] and slides[current].real_idx) or current
   deck_path = path
   deck_dir = path:match("^(.*/)") or path:match("^(.*\\)") or ""
-  meta, slides, raw_slides_src, raw_fm_src = parser.parse(text)
-  raw_slides_src = raw_slides_src or {}
+  meta, all_slides, all_raw_slides_src, raw_fm_src = parser.parse(text)
+  all_slides = all_slides or {}
+  all_raw_slides_src = all_raw_slides_src or {}
   raw_fm_src = raw_fm_src or ""
+  rebuild_visible()
   apply_theme()
   preload_images()
   if preserve_position and #slides > 0 then
-    current = math.max(1, math.min(saved, #slides))
+    -- retrouve une position raisonnable : premiere slide visible >= saved_real
+    local target = 1
+    for i, s in ipairs(slides) do
+      if s.real_idx >= saved_real then target = i; break end
+      target = i
+    end
+    current = target
   else
-    current = 1
+    current = math.max(1, math.min(1, #slides))
   end
   previous, trans_t = current, 1
   slide_arrived_t = love.timer.getTime()
   -- baseline mtime du fichier juste chargé (pour ne pas retriger le watcher)
   watch_mtime = file_mtime(path)
   love.window.setTitle("mSM — " .. (path:match("([^/\\]+)$") or path))
+end
+
+-- Ecrit all_raw_slides_src sur disque en preservant le frontmatter et
+-- l'espacement entre slides. Renvoie true si succes.
+local function write_deck_to_disk()
+  if not deck_path then return false end
+  local parts = {}
+  for i, s in ipairs(all_raw_slides_src) do
+    parts[i] = trim_blank_lines(s)
+  end
+  local body = "\n" .. table.concat(parts, "\n\n---\n\n") .. "\n"
+  local full = (raw_fm_src or "") .. body
+  local f = io.open(deck_path, "w")
+  if not f then return false end
+  f:write(full); f:close()
+  return true
+end
+
+local HIDDEN_KEYS = { "hidden", "hide", "skip", "draft" }
+
+local function raw_has_hidden_marker(raw)
+  for _, k in ipairs(HIDDEN_KEYS) do
+    if raw:match("<!%-%-%s*" .. k .. "%s*:%s*true%s*%-%->") then return true end
+  end
+  return false
+end
+
+local function raw_strip_hidden_markers(raw)
+  local out = raw
+  for _, k in ipairs(HIDDEN_KEYS) do
+    out = out:gsub("<!%-%-%s*" .. k .. "%s*:%s*true%s*%-%->%s*\n?", "")
+  end
+  return out
 end
 
 -- Résolveur de font pour l'inline markdown dans les cellules de table.
@@ -1287,19 +1358,60 @@ local function exit_edit_mode()
 end
 
 local function save_edit()
+  local slide = slides[current]
+  local real = slide and slide.real_idx
+  if not real then flash("Slide introuvable"); return end
+  all_raw_slides_src[real] = edit_text
   raw_slides_src[current] = edit_text
-  local parts = {}
-  for i, s in ipairs(raw_slides_src) do
-    parts[i] = trim_blank_lines(s)
-  end
-  local body = "\n" .. table.concat(parts, "\n\n---\n\n") .. "\n"
-  local full = (raw_fm_src or "") .. body
-  local f = io.open(deck_path, "w")
-  if not f then flash("Erreur écriture"); return end
-  f:write(full); f:close()
+  if not write_deck_to_disk() then flash("Erreur écriture"); return end
   edit_mode = false
   load_deck(deck_path, true)
   flash("Enregistré", 1.5)
+end
+
+-- Cache la slide courante : injecte `<!-- hidden: true -->` en tete et reload.
+local function hide_current_slide()
+  if #slides == 0 or not slides[current] then flash("Rien à cacher"); return end
+  local real = slides[current].real_idx
+  local raw = all_raw_slides_src[real] or ""
+  if raw_has_hidden_marker(raw) then flash("Déjà cachée", 1.4); return end
+  all_raw_slides_src[real] = "<!-- hidden: true -->\n" .. raw
+  if not write_deck_to_disk() then flash("Erreur écriture"); return end
+  load_deck(deck_path, true)
+  flash("Slide cachée", 1.4)
+end
+
+-- Retire tous les marqueurs hidden/hide/skip/draft de la slide courante.
+local function unhide_current_slide()
+  if #slides == 0 or not slides[current] then flash("Rien à afficher"); return end
+  local real = slides[current].real_idx
+  local raw = all_raw_slides_src[real] or ""
+  if not raw_has_hidden_marker(raw) then flash("Pas cachée", 1.4); return end
+  all_raw_slides_src[real] = raw_strip_hidden_markers(raw)
+  if not write_deck_to_disk() then flash("Erreur écriture"); return end
+  load_deck(deck_path, true)
+  flash("Slide affichée", 1.4)
+end
+
+-- Bascule entre vue normale (slides visibles) et vue cachees (slides cachees).
+local function toggle_hidden_view()
+  hidden_view = not hidden_view
+  local saved_real = (slides[current] and slides[current].real_idx) or 1
+  rebuild_visible()
+  -- retrouve la slide la plus proche dans le nouveau filtre
+  local target = 1
+  for i, s in ipairs(slides) do
+    if s.real_idx >= saved_real then target = i; break end
+    target = i
+  end
+  current = math.max(1, math.min(target, math.max(1, #slides)))
+  previous, trans_t = current, 1
+  slide_arrived_t = love.timer.getTime()
+  if #slides == 0 then
+    flash(hidden_view and "Aucune slide cachée" or "Aucune slide visible", 2)
+  else
+    flash(hidden_view and ("Vue cachées (" .. #slides .. ")") or "Vue normale", 1.6)
+  end
 end
 
 local function caret_move_vert(text, cursor, dir)
@@ -2078,6 +2190,12 @@ function love.keypressed(key)
     love.mouse.setVisible(not laser_mode)
   elseif key == "c" then
     notes_mode = not notes_mode
+  elseif key == "v" then
+    toggle_hidden_view()
+  elseif key == "h" and is_shift_down() then
+    hide_current_slide()
+  elseif key == "u" and is_shift_down() then
+    unhide_current_slide()
   elseif key == "h" or key == "/" or key == "?" then
     help_mode = true
   elseif key == "right" or key == "space" or key == "pagedown" or key == "return" or key == "down" then

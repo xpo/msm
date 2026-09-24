@@ -505,8 +505,11 @@
       const v = s.meta.hidden || s.meta.hide || s.meta.skip || s.meta.draft;
       return v === "true" || v === true || v === "1";
     };
-    const slides = raw.map(parseSlide).filter(s => s.length && !isHidden(s));
-    return { meta, slides };
+    // On garde TOUTES les slides avec un flag .hidden ; le filtrage se fait
+    // au rendu selon `hiddenView` (touche V), pour eviter de reparser.
+    const allSlides = raw.map(parseSlide).filter(s => s.length);
+    allSlides.forEach(s => { s.hidden = isHidden(s); });
+    return { meta, allSlides };
   }
 
   // inline markdown: **gras**, *italique*, `code`, ~~barré~~, [texte](url)
@@ -552,6 +555,8 @@
   let deckBase = "";
   let slidesCount = 0;
   let current = 0;
+  let allSlidesCache = [];       // toutes les slides, avec flag .hidden
+  let hiddenView = false;        // false : slides visibles / true : slides cachees uniquement
   let overflowMode = "shrink";
   let minScale = 0.45;
   let parsedSlides = [];
@@ -624,6 +629,10 @@
       ["A",             "toggle auto-avance"],
       ["auto: N",       "(frontmatter) intervalle en secondes"],
       ["<!-- auto: N -->", "override par slide"],
+    ]},
+    { title: "Slides cachées", items: [
+      ["V", "basculer vue normale / slides cachées"],
+      ["<!-- hidden: true -->", "cache une slide (aussi : hide, skip, draft)"],
     ]},
   ];
   function renderHelp() {
@@ -957,6 +966,30 @@
     runMermaid();
   }
 
+  // Bascule entre vue normale (slides visibles) et vue cachees (slides cachees).
+  function toggleHiddenView() {
+    if (!allSlidesCache.length) return;
+    hiddenView = !hiddenView;
+    const slides = allSlidesCache.filter(s => hiddenView ? s.hidden : !s.hidden);
+    if (!slides.length) {
+      // aucun match : on repasse au mode inverse pour eviter un ecran vide
+      hiddenView = !hiddenView;
+      return;
+    }
+    renderDeck(slides);
+    current = 0;
+    document.querySelectorAll(".slide").forEach((s, i) => {
+      s.classList.remove("current", "past", "instant");
+      if (i === 0) s.classList.add("current");
+    });
+    document.getElementById("pbar-slide").textContent = "1 / " + slidesCount;
+    const first = document.querySelector(".slide.current");
+    if (first) applyBodyMotion(first.dataset.motion || deckMotion);
+    requestAnimationFrame(() => first && applyOverflow(first));
+    slideStart = Date.now();
+    updateProgressBar();
+  }
+
   const MERMAID_THEME = { dark: "dark", slate: "dark", light: "default", cream: "neutral", solar: "default" };
   async function runMermaid() {
     const nodes = document.querySelectorAll(".mermaid");
@@ -1026,8 +1059,14 @@
 
   function loadText(text, name) {
     try {
-      const { meta, slides } = parse(text);
-      if (!slides.length) { showWelcome("Le fichier ne contient aucune slide."); return; }
+      const { meta, allSlides } = parse(text);
+      if (!allSlides.length) { showWelcome("Le fichier ne contient aucune slide."); return; }
+      allSlidesCache = allSlides;
+      const slides = allSlides.filter(s => hiddenView ? s.hidden : !s.hidden);
+      if (!slides.length) {
+        showWelcome(hiddenView ? "Aucune slide cachée dans ce deck." : "Toutes les slides sont cachées.");
+        return;
+      }
       applyMeta(meta);
       renderDeck(slides);
       current = 0;
@@ -1122,6 +1161,7 @@
       case "l": case "L": toggleLaser(); e.preventDefault(); break;
       case "c": case "C": toggleNotes(); e.preventDefault(); break;
       case "a": case "A": toggleAuto(); e.preventDefault(); break;
+      case "v": case "V": toggleHiddenView(); e.preventDefault(); break;
       case "h": case "H": case "?":
         toggleHelp(); e.preventDefault(); break;
     }
