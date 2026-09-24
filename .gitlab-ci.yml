@@ -1,0 +1,17 @@
+# GitLab Pages : publie une landing + la démo vivante sur xpoxpo.gitlab.io/msm
+# La démo est le runtime web (msm.html) qui charge site/demo.md, un deck mSM
+# qui présente mSM lui-même.
+
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - mkdir -p public
+    - cp msm.html public/msm.html
+    - cp site/index.html public/index.html
+    - cp site/demo.md public/demo.md
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"

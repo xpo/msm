@@ -24,3 +24,6 @@ tools/mermaid.min.js
 # Tags Release (zips produits localement)
 *.app.zip
 release/
+
+# GitLab Pages : build produit par la CI
+public/

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mSM, .md Slide Machine, un moteur de présentation pour fichiers markdown</title>
+<meta name="description" content="mSM transforme un fichier .md en présentation. Runtime desktop macOS signé Apple, runtime web autonome, export HTML. Open source, écrit en Lua.">
+<meta property="og:title" content="mSM, .md Slide Machine">
+<meta property="og:description" content="Écris tes slides en Markdown, présente-les avec mSM. Desktop, web, export HTML autonome.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://xpoxpo.gitlab.io/msm/">
+<link rel="canonical" href="https://xpoxpo.gitlab.io/msm/">
+<style>
+  :root {
+    --bg: #0d1421;
+    --fg: #e8eef7;
+    --muted: #94a3b8;
+    --accent: #5eead4;
+    --h2: #7dd3fc;
+    --h3: #c4b5fd;
+    --card: #131c2e;
+    --border: #1e2a44;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f7fafc;
+      --fg: #0d1421;
+      --muted: #4b5563;
+      --accent: #0d9488;
+      --h2: #0369a1;
+      --h3: #6d28d9;
+      --card: #ffffff;
+      --border: #e2e8f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.92em;
+  }
+  pre {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+    border-radius: 8px;
+    overflow: auto;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  pre code { border: 0; padding: 0; background: transparent; }
+  h1, h2, h3 { line-height: 1.2; margin: 1.4em 0 0.5em; }
+  h1 { font-size: 2.8rem; margin-top: 0; color: var(--fg); }
+  h2 { font-size: 1.7rem; color: var(--h2); }
+  h3 { font-size: 1.2rem; color: var(--h3); }
+  .container { max-width: 860px; margin: 0 auto; padding: 48px 24px 80px; }
+  .hero { text-align: center; padding: 24px 0 32px; }
+  .hero .lede { color: var(--muted); font-size: 1.2rem; max-width: 640px; margin: 0 auto; }
+  .actions {
+    display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+    margin: 28px 0 8px;
+  }
+  .btn {
+    display: inline-block;
+    padding: 12px 22px;
+    border-radius: 8px;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--fg);
+    transition: transform 0.12s ease, border-color 0.12s ease;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #0d1421; border-color: var(--accent); }
+  .btn.primary:hover { opacity: 0.92; }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .card h3 { margin-top: 0; }
+  .card p { color: var(--muted); margin: 6px 0 0; }
+  .demo-wrap {
+    position: relative;
+    margin: 24px 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    background: var(--card);
+  }
+  .demo-wrap iframe {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    border: 0;
+  }
+  .demo-caption {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.92rem;
+    margin: 8px 0 24px;
+  }
+  footer {
+    margin-top: 60px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.92rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  ul.kbd { list-style: none; padding: 0; }
+  ul.kbd li { padding: 4px 0; color: var(--muted); }
+  ul.kbd kbd {
+    font-family: "SF Mono", Menlo, monospace;
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.88em;
+    color: var(--fg);
+  }
+</style>
+</head>
+<body>
+<main class="container">
+
+  <section class="hero">
+    <h1>mSM</h1>
+    <p class="lede"><strong>.md Slide Machine</strong>, un moteur de présentation minimal.<br>Écris tes slides en Markdown, présente-les partout.</p>
+    <div class="actions">
+      <a class="btn primary" href="msm.html?deck=demo.md">Voir la démo</a>
+      <a class="btn" href="https://gitlab.com/xpoxpo/msm/-/releases/permalink/latest">Télécharger (macOS)</a>
+      <a class="btn" href="https://gitlab.com/xpoxpo/msm">Code source</a>
+    </div>
+  </section>
+
+  <section>
+    <h2>La démo présente mSM avec mSM</h2>
+    <div class="demo-wrap">
+      <iframe src="msm.html?deck=demo.md" title="Démo interactive mSM" loading="lazy"></iframe>
+    </div>
+    <p class="demo-caption">Clique dans la démo, puis utilise les flèches (ou <code>Espace</code>). <code>O</code> pour la vue d'ensemble, <code>?</code> pour l'aide.</p>
+  </section>
+
+  <section>
+    <h2>Pourquoi mSM</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>Un fichier .md</h3>
+        <p>Ton deck est du Markdown standard. Versionnable dans Git, éditable dans n'importe quel éditeur.</p>
+      </div>
+      <div class="card">
+        <h3>Trois runtimes</h3>
+        <p>App macOS (LÖVE + Lua, signée et notarisée), runtime web autonome (un seul HTML), export HTML statique.</p>
+      </div>
+      <div class="card">
+        <h3>Mermaid inclus</h3>
+        <p>Blocs <code>```mermaid</code> rendus en desktop comme en web. Diagrammes, flowcharts, séquences.</p>
+      </div>
+      <div class="card">
+        <h3>Thèmes et animations</h3>
+        <p>Fonds animés (mesh, aurora, grain, particles), transitions (fade, slide, push), Ken Burns sur les images.</p>
+      </div>
+      <div class="card">
+        <h3>Mode présentateur</h3>
+        <p>Notes de speaker, vue mosaïque, laser pointeur, écran noir, auto-avance, timer, barre de progression.</p>
+      </div>
+      <div class="card">
+        <h3>Édition à chaud</h3>
+        <p><code>Cmd-E</code> pour éditer la slide en cours, <code>Cmd-S</code> pour sauver. Watcher automatique du fichier.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Un deck en 20 secondes</h2>
+    <pre><code>---
+motion: mesh
+transition: slide
+topLeft: Ma boite
+---
+
+# Titre du deck
+
+### Sous-titre optionnel
+
+---
+
+## Deuxième slide
+
+- Puce 1
+- Puce 2
+
+![image](chemin/vers/photo.png)
+
+---
+
+## Table avec formatage
+
+| Feature   | Statut |
+| --------- | :----: |
+| **Prod**  | oui    |
+| *Beta*    | bientot |
+</code></pre>
+  </section>
+
+  <section>
+    <h2>Installation</h2>
+    <h3>macOS, application desktop</h3>
+    <p>Télécharge <code>mSM.dmg</code> depuis <a href="https://gitlab.com/xpoxpo/msm/-/releases">GitLab Releases</a>, glisse dans Applications, lance. Signé Developer ID, notarisé Apple.</p>
+    <h3>Web, sans installation</h3>
+    <p>Ouvre <a href="msm.html">msm.html</a> dans un navigateur, glisse ton <code>.md</code> dessus. Ou passe l'URL du deck en query : <code>msm.html?deck=mon-deck.md</code>.</p>
+    <h3>Export HTML autonome</h3>
+    <p>Touche <code>E</code> dans l'app desktop : mSM produit un HTML unique contenant le deck, prêt à partager par email ou à publier.</p>
+  </section>
+
+  <section>
+    <h2>Raccourcis principaux</h2>
+    <ul class="kbd">
+      <li><kbd>→</kbd> <kbd>Espace</kbd> : slide suivante</li>
+      <li><kbd>←</kbd> <kbd>Backspace</kbd> : slide précédente</li>
+      <li><kbd>O</kbd> : vue d'ensemble (mosaïque)</li>
+      <li><kbd>F</kbd> : plein écran</li>
+      <li><kbd>C</kbd> : notes de speaker</li>
+      <li><kbd>L</kbd> : laser pointeur</li>
+      <li><kbd>V</kbd> : bascule slides visibles, slides cachées</li>
+      <li><kbd>H</kbd> ou <kbd>?</kbd> : aide complète</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>mSM, écrit en Lua. <a href="https://gitlab.com/xpoxpo/msm/-/blob/main/LICENSE">Licence MIT</a>.</span>
+    <span><a href="https://gitlab.com/xpoxpo/msm/-/issues">Signaler un bug</a></span>
+  </footer>
+
+</main>
+</body>
+</html>
