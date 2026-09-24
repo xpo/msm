@@ -177,6 +177,7 @@ Un preset définit six couleurs (`background`, `color`, `accent`, `h2`, `h3`, `m
 | `\| a \| b \|`    | Table (header, séparateur, lignes)                     |
 | ` ```mermaid ` … | Diagramme Mermaid (flowchart, sequence, gantt, etc.)    |
 | `<!-- bleed: true -->` | Slide sans padding, image ou contenu à fond perdu (bord à bord) |
+| `<!-- hidden: true -->` | Cache la slide (retirée du deck, pas navigable ni dans l'overview). Alias : `hide`, `skip`, `draft` |
 | `**gras**`        | Gras                                                   |
 | `*italique*`      | Italique                                               |
 | `` `code` ``      | Code inline (fond teinté)                              |

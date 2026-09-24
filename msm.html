@@ -500,7 +500,12 @@
     text = text.replace(/\r\n/g, "\n");
     const { meta, body } = parseFrontmatter(text);
     const raw = splitSlides(body);
-    const slides = raw.map(parseSlide).filter(s => s.length);
+    const isHidden = (s) => {
+      if (!s.meta) return false;
+      const v = s.meta.hidden || s.meta.hide || s.meta.skip || s.meta.draft;
+      return v === "true" || v === true || v === "1";
+    };
+    const slides = raw.map(parseSlide).filter(s => s.length && !isHidden(s));
     return { meta, slides };
   }
 

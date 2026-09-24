@@ -171,6 +171,13 @@ local function parse_slide(lines)
   return els
 end
 
+local function is_hidden(slide)
+  local m = slide.meta
+  if not m then return false end
+  local v = m.hidden or m.hide or m.skip or m.draft
+  return v == "true" or v == true or v == "1"
+end
+
 function M.parse(text)
   text = text:gsub("\r\n", "\n")
   local meta, body, raw_fm = parse_frontmatter(text)
@@ -179,7 +186,7 @@ function M.parse(text)
   local raw_slides = {}
   for _, lines in ipairs(raw) do
     local s = parse_slide(lines)
-    if #s > 0 then
+    if #s > 0 and not is_hidden(s) then
       table.insert(slides, s)
       table.insert(raw_slides, table.concat(lines, "\n"))
     end
