@@ -818,25 +818,54 @@ local function layout_table(el, maxW)
     rows[ri] = r
   end
 
-  -- Largeur de colonne : basée sur le texte strippé (approximation correcte
-  -- puisque gras/italique n'affectent que peu la métrique horizontale).
-  local colW = {}
+  -- Auto-layout classique : largeur naturelle (sans wrap) + largeur min (mot le
+  -- plus long). Si la somme des largeurs naturelles depasse maxW, on alloue
+  -- minW a chaque colonne puis on distribue le reste proportionnellement a
+  -- (natW - minW). Evite d'ecraser une colonne courte quand une autre colonne
+  -- a du texte tres long qui pourrait wrapper.
+  local natW, minW = {}, {}
   local function measure(cells)
     for i = 1, ncols do
-      local w = font:getWidth(cells[i].plain) + cellPad * 2
-      if not colW[i] or w > colW[i] then colW[i] = w end
+      local plain = cells[i].plain
+      local w = font:getWidth(plain) + cellPad * 2
+      if not natW[i] or w > natW[i] then natW[i] = w end
+      -- min = plus long "mot" (segment sans espace ni retour ligne)
+      local cell_min = 0
+      for word in plain:gmatch("%S+") do
+        local ww = font:getWidth(word)
+        if ww > cell_min then cell_min = ww end
+      end
+      cell_min = cell_min + cellPad * 2
+      if not minW[i] or cell_min > minW[i] then minW[i] = cell_min end
     end
   end
   measure(header)
   for _, row in ipairs(rows) do measure(row) end
 
-  local sum = 0
-  for i = 1, ncols do sum = sum + (colW[i] or 0) end
-  if sum > maxW then
-    local k = maxW / sum
-    for i = 1, ncols do colW[i] = colW[i] * k end
-    sum = maxW
+  local colW = {}
+  local sum_nat = 0
+  for i = 1, ncols do sum_nat = sum_nat + natW[i] end
+  if sum_nat <= maxW then
+    for i = 1, ncols do colW[i] = natW[i] end
+  else
+    local sum_min = 0
+    for i = 1, ncols do sum_min = sum_min + minW[i] end
+    if sum_min >= maxW then
+      -- Meme les minimums ne tiennent pas : fallback au scale proportionnel sur natW
+      local k = maxW / sum_nat
+      for i = 1, ncols do colW[i] = natW[i] * k end
+    else
+      -- On alloue minW puis on distribue (maxW - sum_min) selon (natW - minW)
+      local slack = maxW - sum_min
+      local flex_total = sum_nat - sum_min
+      for i = 1, ncols do
+        local flex = natW[i] - minW[i]
+        colW[i] = minW[i] + slack * (flex / flex_total)
+      end
+    end
   end
+  local sum = 0
+  for i = 1, ncols do sum = sum + colW[i] end
 
   -- Hauteur des lignes : via inline.layout sur les runs de chaque cellule.
   local function row_h(cells)
