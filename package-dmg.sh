@@ -48,9 +48,18 @@ if [ -n "$SIGN_IDENTITY" ]; then
   spctl -a -t open --context context:primary-signature -v "$DMG_PATH" 2>&1 | tail -2 || true
 fi
 
-# 6) notarisation (si le profil trousseau `msm-notary` existe)
-if security find-generic-password -s "com.apple.gke.notary.tool" -a "msm-notary" >/dev/null 2>&1 \
-   || xcrun notarytool history --keychain-profile msm-notary >/dev/null 2>&1; then
+# 6) notarisation (profil trousseau `msm-notary`)
+# On teste via notarytool directement : le profil peut exister mais Apple
+# repondre 403 si un contrat Program License a expire. On distingue les cas.
+HISTORY_LOG=$(xcrun notarytool history --keychain-profile msm-notary 2>&1 || true)
+if grep -q "A required agreement is missing or has expired" <<< "$HISTORY_LOG"; then
+  echo "▸ profil 'msm-notary' OK mais Apple refuse (contrat expire)"
+  echo "   Signe le nouveau contrat sur https://developer.apple.com/account/"
+  echo "   puis relance ce script. Notarisation sautee pour l'instant."
+elif grep -qE "(Error: Keychain|No such keychain profile|profile is unknown)" <<< "$HISTORY_LOG"; then
+  echo "▸ pas de profil 'msm-notary' dans le trousseau, notarisation sautee"
+  echo "   Creer : xcrun notarytool store-credentials msm-notary --apple-id <email> --team-id DWLLGDWF4U"
+else
   echo "▸ notarisation (peut prendre 2-5 min)"
   set +e
   xcrun notarytool submit "$DMG_PATH" --keychain-profile msm-notary --wait > /tmp/msm-notary.log 2>&1
@@ -60,12 +69,9 @@ if security find-generic-password -s "com.apple.gke.notary.tool" -a "msm-notary"
     xcrun stapler staple "$DMG_PATH" >/dev/null 2>&1 && echo "   ✅ staple DMG"
     xcrun stapler staple "${APP_NAME}.app" >/dev/null 2>&1 && echo "   ✅ staple app"
   else
-    echo "   ⚠ notarisation refusée, log :"
+    echo "   ⚠ notarisation refusee, log :"
     tail -10 /tmp/msm-notary.log | sed 's/^/      /'
   fi
-else
-  echo "▸ pas de profil 'msm-notary' dans le trousseau, étape de notarisation sautée"
-  echo "   Pour activer : xcrun notarytool store-credentials msm-notary --apple-id <email> --team-id DWLLGDWF4U"
 fi
 
 echo
