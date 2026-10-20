@@ -54,7 +54,8 @@ final class Renderer: NSObject, WKNavigationDelegate {
 
     func pollForSVG(attempts: Int) {
         if attempts <= 0 { fail("timeout en attendant Mermaid"); return }
-        let js = "document.querySelector('svg') ? 1 : 0"
+        // On attend window.__mmdReady, pose par thickenEdges apres patch du DOM.
+        let js = "(window.__mmdReady && document.querySelector('svg')) ? 1 : 0"
         webView.evaluateJavaScript(js) { (result, _) in
             if let r = result as? Int, r > 0 {
                 self.measure()
@@ -243,15 +244,107 @@ svg{display:block;}</style>
         .replacingOccurrences(of: "&", with: "&amp;")
         .replacingOccurrences(of: "<", with: "&lt;")
         .replacingOccurrences(of: ">", with: "&gt;")
+    // Rendu Mermaid pensé pour fond sombre (deck mSM par défaut).
+    // themeVariables : lignes claires et EPAISSES (3px) pour que les
+    // fleches restent lisibles meme apres down-scaling du PNG dans la slide.
+    // base theme + couleurs explicites : meilleur controle qu'un preset dark.
     html = """
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8">
-<style>html,body{margin:0;background:transparent;font-family:-apple-system,sans-serif;}</style>
+<style>
+  html,body{margin:0;background:transparent;font-family:-apple-system,sans-serif;}
+  /* Overrides CSS fallback : certains elements SVG Mermaid ignorent les
+     themeVariables (notamment les marker-end des fleches). On force. */
+  .mermaid svg .edgePath .path,
+  .mermaid svg .flowchart-link,
+  .mermaid svg .messageLine0,
+  .mermaid svg .messageLine1 {
+    stroke: #e8eef7 !important;
+    stroke-width: 2.5px !important;
+  }
+  .mermaid svg marker path,
+  .mermaid svg defs marker path {
+    fill: #e8eef7 !important;
+    stroke: #e8eef7 !important;
+  }
+  .mermaid svg .edgeLabel {
+    background-color: transparent !important;
+    color: #e8eef7 !important;
+  }
+  .mermaid svg .edgeLabel rect { fill: transparent !important; }
+</style>
 <script>\(mermaidJS)</script>
 </head><body>
 <div class="mermaid">\(escaped)</div>
 <script>
-  mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+  window.__mmdReady = false;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    securityLevel: 'loose',
+    themeVariables: {
+      // Palette calee sur askem dark (mint accent, texte clair, noeuds violets)
+      background: 'transparent',
+      primaryColor: '#1e2a44',
+      primaryTextColor: '#e8eef7',
+      primaryBorderColor: '#5eead4',
+      secondaryColor: '#2a3550',
+      tertiaryColor: '#1e2a44',
+      lineColor: '#e8eef7',
+      textColor: '#e8eef7',
+      mainBkg: '#1e2a44',
+      nodeBorder: '#5eead4',
+      clusterBkg: '#131c2e',
+      clusterBorder: '#5eead4',
+      edgeLabelBackground: 'transparent',
+    },
+    flowchart: { curve: 'basis', htmlLabels: true, padding: 12 },
+  });
+  // Post-process : les markers Mermaid sont trop petits (8x8) et leur
+  // stroke-width inline (1) l'emporte sur le CSS externe. On patche le DOM
+  // apres rendu pour grossir les fleches et uniformiser les traits.
+  function thickenEdges() {
+    const svg = document.querySelector('svg');
+    if (!svg) return { ok: 0 };
+    const markers = svg.querySelectorAll('marker');
+    const links = svg.querySelectorAll('.edgePath path, .flowchart-link');
+    markers.forEach(m => {
+      m.setAttribute('markerWidth', 14);
+      m.setAttribute('markerHeight', 14);
+      m.setAttribute('refX', 7);
+      m.setAttribute('refY', 7);
+      m.setAttribute('viewBox', '0 0 14 14');
+      m.querySelectorAll('path').forEach(p => {
+        p.setAttribute('d', 'M 0 0 L 14 7 L 0 14 z');
+        p.style.fill = '#e8eef7';
+        p.style.stroke = '#e8eef7';
+        p.style.strokeWidth = '0';
+      });
+    });
+    links.forEach(e => {
+      e.style.strokeWidth = '2.5px';
+      e.style.stroke = '#e8eef7';
+    });
+    return { markers: markers.length, links: links.length };
+  }
+  window.__mmdErr = null;
+  // On attend que Mermaid ait fini de rendre (SVG en place), puis on
+  // post-process et on signale au Swift.
+  let tries = 0;
+  const iv = setInterval(() => {
+    const svg = document.querySelector('svg');
+    if (svg) {
+      clearInterval(iv);
+      try { thickenEdges(); } catch (e) {
+        window.__mmdErr = String(e && e.message || e);
+      }
+      window.__mmdReady = true;
+    } else if (tries++ > 60) {
+      clearInterval(iv);
+      window.__mmdErr = window.__mmdErr || 'svg absent apres 6s';
+      window.__mmdReady = true;
+    }
+  }, 100);
 </script>
 </body></html>
 """

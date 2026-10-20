@@ -673,7 +673,9 @@ local function preload_images()
       if el.type == "image" then
         el.texture = load_image(el.src)
       elseif el.type == "mermaid" then
-        local hash = md5_string(el.text)
+        -- Sel sur le hash : incremente quand on change les styles mermaid
+        -- pour invalider les PNG caches sans vider le dossier a la main.
+        local hash = md5_string(el.text .. "|mmdv2")
         if hash then
           if not cache_created then
             os.execute("mkdir -p '" .. cache_dir:gsub("'", "'\\''") .. "'")
